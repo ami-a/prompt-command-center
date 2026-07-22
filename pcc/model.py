@@ -34,6 +34,11 @@ MAX_INCLUDE_DEPTH = 4
 #: :mod:`pcc.compose`.
 MODIFIER_TAG = "modifier"
 
+#: ``{{^}}`` marks where the caret should land after pasting, so a template can
+#: end with a scaffold you finish typing in place. It is not a fill-in slot.
+CARET_NAME = "^"
+CARET_TOKEN = "{{^}}"
+
 
 def _split_tail(tail: str | None) -> tuple[str | None, tuple[str, ...]]:
     """Split a placeholder's tail into ``(default, options)``.
@@ -104,9 +109,10 @@ def parse_slots(body: str) -> list[Slot]:
     slots: dict[str, Slot] = {}
     for match in PLACEHOLDER_RE.finditer(body):
         name = match.group(1).strip()
-        if not name or name.startswith(INCLUDE_PREFIX):
-            # An include is not a fill-in; it contributes its own slots only once
-            # expanded, which render() handles.
+        if not name or name.startswith(INCLUDE_PREFIX) or name == CARET_NAME:
+            # Neither an include nor the caret marker is a fill-in: the include
+            # contributes its own slots once expanded (render handles that), and
+            # {{^}} is a paste-time cursor hint, not a field.
             continue
         candidate = Slot(name, *_split_tail(match.group(2)))
         existing = slots.get(name)
@@ -240,6 +246,23 @@ def render(
         return "{{" + name + "}}"
 
     return PLACEHOLDER_RE.sub(substitute, body)
+
+
+def extract_caret(text: str) -> tuple[str, int]:
+    """Split a ``{{^}}`` marker out of rendered text.
+
+    Returns ``(clean_text, left_moves)`` where ``left_moves`` is how many
+    characters sit after the marker -- i.e. how many Left arrows to tap after
+    pasting so the caret lands where ``{{^}}`` was. Only the first marker counts;
+    any others are removed too so they never paste literally. No marker yields
+    ``(text, 0)``.
+    """
+    index = text.find(CARET_TOKEN)
+    if index < 0:
+        return text, 0
+    clean = text.replace(CARET_TOKEN, "")
+    left_moves = len(clean) - index
+    return clean, left_moves
 
 
 @dataclass

@@ -34,7 +34,10 @@ VK_MENU = 0x12          # Alt
 VK_LWIN = 0x5B
 VK_RWIN = 0x5C
 VK_V = 0x56
+VK_C = 0x43
 VK_INSERT = 0x2D
+VK_RETURN = 0x0D
+VK_LEFT = 0x25
 
 SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001
 SPIF_SENDCHANGE = 0x02
@@ -273,21 +276,61 @@ def clipboard_set_text(text: str) -> bool:
 # --- Paste ------------------------------------------------------------------
 
 
+def send_chord(modifier_vk: int, key_vk: int) -> bool:
+    """Press ``modifier_vk``+``key_vk`` and release both, into the focused window.
+
+    The one primitive behind every synthesised shortcut here (Ctrl+V paste,
+    Ctrl+C capture, ...). Modifiers held by the user are dropped first so a stray
+    Shift cannot turn the chord into something else.
+    """
+    _release_stray_modifiers()
+    return _send([
+        _key_event(modifier_vk, key_up=False),
+        _key_event(key_vk, key_up=False),
+        _key_event(key_vk, key_up=True),
+        _key_event(modifier_vk, key_up=True),
+    ])
+
+
 def send_paste(chord: str = "ctrl+v") -> bool:
     """Synthesise the paste chord into whatever currently has focus."""
-    _release_stray_modifiers()
-
     if chord == "shift+insert":
-        modifier, key = VK_SHIFT, VK_INSERT
-    else:
-        modifier, key = VK_CONTROL, VK_V
+        return send_chord(VK_SHIFT, VK_INSERT)
+    return send_chord(VK_CONTROL, VK_V)
 
-    return _send([
-        _key_event(modifier, key_up=False),
-        _key_event(key, key_up=False),
-        _key_event(key, key_up=True),
-        _key_event(modifier, key_up=True),
-    ])
+
+def send_copy() -> bool:
+    """Ctrl+C into the focused window -- used to capture the selection."""
+    return send_chord(VK_CONTROL, VK_C)
+
+
+def send_enter() -> bool:
+    """Tap Enter into the focused window (paste-and-send)."""
+    _release_stray_modifiers()
+    return _send([_key_event(VK_RETURN, key_up=False), _key_event(VK_RETURN, key_up=True)])
+
+
+def send_key_taps(key_vk: int, count: int) -> bool:
+    """Tap ``key_vk`` ``count`` times -- e.g. Left arrows to park the caret."""
+    if count <= 0:
+        return True
+    inputs: list[INPUT] = []
+    for _ in range(count):
+        inputs.append(_key_event(key_vk, key_up=False))
+        inputs.append(_key_event(key_vk, key_up=True))
+    return _send(inputs)
+
+
+def clipboard_sequence() -> int:
+    """``GetClipboardSequenceNumber``: bumps whenever the clipboard changes.
+
+    Lets selection capture tell "the user copied something" from "nothing was
+    selected, so Ctrl+C did nothing" without comparing clipboard contents.
+    """
+    try:
+        return int(user32.GetClipboardSequenceNumber())
+    except Exception:
+        return 0
 
 
 def send_unicode_text(text: str) -> bool:

@@ -28,6 +28,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "restore_clipboard_delay_ms": 300,
     "paste_key": "ctrl+v",         # or "shift+insert" for stubborn terminals
 
+    # Selection capture for {{selection}}. OFF by default: it synthesises Ctrl+C
+    # into the app you summoned PCC over, and in a console Ctrl+C is SIGINT, so
+    # this must be opt-in. "smart" fires only when a template actually uses
+    # {{selection}}; "always" every summon. Consoles are skipped either way.
+    "capture_selection": "off",    # off | smart | always
+
     # Spelling. The checker is the one built into Windows, so there is no
     # dictionary to ship and words you add here are known to every other app.
     "spellcheck": True,

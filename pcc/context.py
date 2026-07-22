@@ -109,6 +109,19 @@ LABELS: dict[str, str] = {
 }
 
 
+#: Processes where synthesising Ctrl+C would do harm rather than copy: in a
+#: console it is SIGINT and would kill the user's running command. Selection
+#: capture always skips these, whatever the setting.
+CONSOLE_DENYLIST = frozenset({
+    "windowsterminal.exe", "cmd.exe", "powershell.exe", "pwsh.exe",
+    "conhost.exe", "wt.exe", "mintty.exe", "bash.exe",
+})
+
+
+def is_console(app: str | None) -> bool:
+    return bool(app) and app.strip().lower() in CONSOLE_DENYLIST
+
+
 def is_magic(name: str) -> bool:
     return name.strip() in RESOLVERS
 

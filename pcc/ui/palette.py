@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 from .. import compose, context, lint, placement, spell, store, winapi
 from ..context import is_magic
 from ..journal import UndoJournal
-from ..model import Library, Tab, Template, expand_includes, new_id, render
+from ..model import Library, Tab, Template, expand_includes, extract_caret, new_id, render
 from ..usage import UsageStore
 from ..search import search as run_search
 from . import spellcheck
@@ -151,6 +151,14 @@ class PaletteWindow(QWidget):
         self._marked: list[str] = []
         #: In-session undo for destructive edits, so delete need not ask first.
         self.journal = UndoJournal()
+        #: Set by Alt+Enter for one paste: tap Enter after it to submit the chat.
+        self._then_send = False
+        #: Selection-capture state for {{selection}}, reset each summon.
+        self._sel_pending = False       # a Ctrl+C was fired this summon
+        self._sel_seq = 0               # clipboard sequence before that Ctrl+C
+        self._sel_prior: str | None = None   # the user's clipboard, to restore
+        self._sel_cache: str | None = None   # resolved selection, computed once
+        self._sel_done = False          # whether we have resolved it yet
         self._build_ui()
         self._wire()
         self._apply_spellcheck()
@@ -446,6 +454,10 @@ class PaletteWindow(QWidget):
         # A new summon starts with a clean slate -- a mark left over from last
         # time would silently join the next prompt.
         self._marked.clear()
+        # Fire selection capture (if enabled) while the target still owns the
+        # foreground, then show immediately -- never wait for the copy to land.
+        self._begin_selection_capture()
+        mark("capture-selection")
         self._go_to_grid(clear_search=True)
         mark("repopulate")
 
@@ -581,7 +593,18 @@ class PaletteWindow(QWidget):
     # --- paste --------------------------------------------------------------
 
     def paste_text(self, text: str) -> None:
-        """Put ``text`` on the clipboard and paste it into the captured window."""
+        """Put ``text`` on the clipboard and paste it into the captured window.
+
+        Two paste-time behaviours ride along: a ``{{^}}`` marker parks the caret
+        by tapping Left afterwards, and an ``Alt+Enter`` request (``_then_send``)
+        taps Enter to submit the chat once the paste lands. Both are delayed like
+        the clipboard restore, because synthetic keys sent immediately would race
+        the paste the target has not processed yet.
+        """
+        then_send = self._then_send
+        self._then_send = False
+
+        text, left_moves = extract_caret(text)
         if not text:
             self.dismiss()
             return
@@ -596,6 +619,14 @@ class PaletteWindow(QWidget):
         self.dismiss(restore_focus=True)
         winapi.send_paste(str(self.settings.get("paste_key", "ctrl+v")))
 
+        # Post-paste keystrokes, ordered and delayed so each lands after the
+        # paste the target is still digesting: caret first, then send.
+        after = 60
+        if left_moves > 0:
+            QTimer.singleShot(after, lambda: winapi.send_key_taps(winapi.VK_LEFT, left_moves))
+        if then_send:
+            QTimer.singleShot(after + 25, winapi.send_enter)
+
         if prior is not None:
             # Give the target app time to read the clipboard before we put the
             # old contents back; restoring immediately races the paste.
@@ -603,6 +634,65 @@ class PaletteWindow(QWidget):
                 int(self.settings.get("restore_clipboard_delay_ms", 300)),
                 lambda: winapi.clipboard_set_text(prior),
             )
+
+    # --- selection capture (guarded; off by default) ------------------------
+
+    def _library_uses_selection(self) -> bool:
+        return any("{{selection}}" in t.body for _tab, t in self.library.iter_all())
+
+    def _should_capture_selection(self) -> bool:
+        mode = str(self.settings.get("capture_selection", "off")).lower()
+        if mode == "off":
+            return False
+        if context.is_console(self._current_app()):
+            # Ctrl+C in a console is SIGINT: never send it there.
+            return False
+        if mode == "always":
+            return True
+        return self._library_uses_selection()  # "smart"
+
+    def _begin_selection_capture(self) -> None:
+        """Snapshot the clipboard and fire Ctrl+C at the still-focused target.
+
+        The value is verified and read lazily at activation, so this stays a
+        single ``SendInput`` on the hot path with no round trip.
+        """
+        self._sel_pending = False
+        self._sel_cache = None
+        self._sel_done = False
+        if not self._should_capture_selection():
+            return
+        try:
+            self._sel_seq = winapi.clipboard_sequence()
+            self._sel_prior = winapi.clipboard_get_text()
+            winapi.send_copy()
+            self._sel_pending = True
+        except Exception:
+            self._sel_pending = False
+
+    def _selection(self) -> str | None:
+        """The captured selection, verified by clipboard sequence, computed once.
+
+        If the sequence number never moved, nothing was selected and Ctrl+C was
+        a no-op -- so there is no selection, and the user's clipboard is left
+        untouched. Otherwise we read it, then immediately restore the clipboard
+        the user actually had, so capture never clobbers it.
+        """
+        if not self._sel_pending:
+            return None
+        if self._sel_done:
+            return self._sel_cache
+        self._sel_done = True
+        try:
+            if winapi.clipboard_sequence() == self._sel_seq:
+                self._sel_cache = None
+            else:
+                self._sel_cache = winapi.clipboard_get_text()
+                if self._sel_prior is not None:
+                    winapi.clipboard_set_text(self._sel_prior)
+        except Exception:
+            self._sel_cache = None
+        return self._sel_cache
 
     def _resolver_for(self, template: Template) -> "tuple[object, list, str | None]":
         """Build the magic-slot resolver, CONTEXT items and prefill for ``template``.
@@ -621,7 +711,13 @@ class PaletteWindow(QWidget):
             if (magic_names or prefill_candidate)
             else None
         )
-        env = context.ResolveEnv(target_hwnd=self._target_hwnd, clipboard=clip)
+        # Only resolve the captured selection when a slot actually asks for it --
+        # reading it restores the user's clipboard, a side effect not worth
+        # paying otherwise.
+        selection = self._selection() if "selection" in magic_names else None
+        env = context.ResolveEnv(
+            target_hwnd=self._target_hwnd, clipboard=clip, selection=selection
+        )
         resolve = context.make_resolver(env)
         items = context.context_items(magic_names, env)
         prefill = clip if prefill_candidate else None
@@ -1042,6 +1138,12 @@ class PaletteWindow(QWidget):
 
         page = self.stack.currentIndex()
         if page == PAGE_FILL:
+            # Alt+Enter here means the same as on the grid: submit this fill, and
+            # then tap Enter in the target. Flag it before the panel submits.
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and (
+                event.modifiers() & Qt.KeyboardModifier.AltModifier
+            ):
+                self._then_send = True
             return self.fill.handle_key(event)
         if page == PAGE_EDITOR:
             return self.editor.handle_key(event)
@@ -1068,6 +1170,8 @@ class PaletteWindow(QWidget):
             if control:
                 self._paste_raw()
             else:
+                # Alt+Enter pastes and then taps Enter to submit the chat.
+                self._then_send = alt
                 self._activate_selection()
             return True
 
