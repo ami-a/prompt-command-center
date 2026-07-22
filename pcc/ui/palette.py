@@ -36,6 +36,7 @@ from ..search import search as run_search
 from .editor import EditorPanel
 from .fill import FillPanel
 from .grid import TileGrid
+from .schemes import colour_tokens
 from .settings_panel import SettingsPanel
 from .tabstrip import TabStrip
 from .theme import build_stylesheet
@@ -48,7 +49,8 @@ HINTS = {
         "<b>⇥</b> tab · <b>⌥1-9</b> jump · <b>^N</b> new · <b>F2</b> edit · <b>Esc</b> hide"
     ),
     PAGE_FILL: (
-        "<b>⇥/⇧⇥</b> next slot · <b>⇧⏎</b> newline · <b>⏎</b> paste · <b>Esc</b> back"
+        "<b>⇥/⇧⇥</b> next slot · <b>←→</b> option · <b>type</b> your own · "
+        "<b>⇧⏎</b> newline · <b>⏎</b> paste · <b>Esc</b> back"
     ),
     PAGE_EDITOR: "<b>⇥</b> next field · <b>^S</b> save · <b>Esc</b> cancel",
     PAGE_SETTINGS: (
@@ -69,6 +71,10 @@ class PaletteWindow(QWidget):
 
     SHADOW_BLUR = 38
     SHADOW_OFFSET_Y = 6
+    #: Opacity of the card's drop shadow. Its *colour* comes from the scheme, so
+    #: the halo is hue-matched, but it stays dark enough to lift the palette off
+    #: a bright desktop rather than reading as a glow.
+    SHADOW_ALPHA = 205
     #: The window must be large enough to contain the card *plus* its shadow.
     #:
     #: A QGraphicsDropShadowEffect paints outside the widget it is attached to,
@@ -116,11 +122,11 @@ class PaletteWindow(QWidget):
 
         card = QFrame()
         card.setObjectName("Card")
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(self.SHADOW_BLUR)
-        shadow.setColor(QColor(0, 0, 0, 190))
-        shadow.setOffset(0, self.SHADOW_OFFSET_Y)
-        card.setGraphicsEffect(shadow)
+        self._shadow = QGraphicsDropShadowEffect(self)
+        self._shadow.setBlurRadius(self.SHADOW_BLUR)
+        self._shadow.setOffset(0, self.SHADOW_OFFSET_Y)
+        card.setGraphicsEffect(self._shadow)
+        self._apply_shadow_colour()
         outer.addWidget(card)
 
         root = QVBoxLayout(card)
@@ -193,6 +199,13 @@ class PaletteWindow(QWidget):
         self.settings_panel.saved.connect(self._save_settings)
         self.settings_panel.cancelled.connect(self._revert_settings)
 
+    def _apply_shadow_colour(self) -> None:
+        """Re-tint the drop shadow for the current scheme."""
+        tokens = colour_tokens(self.settings.get("scheme"), self.settings.get("accent"))
+        colour = QColor(tokens["CARD_SHADOW"])
+        colour.setAlpha(self.SHADOW_ALPHA)
+        self._shadow.setColor(colour)
+
     def _resize_for(self, screen) -> None:
         width, height = placement.fit_size(
             screen,
@@ -252,6 +265,7 @@ class PaletteWindow(QWidget):
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(build_stylesheet(self.settings))
+        self._apply_shadow_colour()
         self.grid.set_columns(int(self.settings.get("columns", 3)))
         # Re-binding forces the clamped labels to recompute their line heights
         # against the new font metrics.
@@ -282,6 +296,7 @@ class PaletteWindow(QWidget):
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(build_stylesheet(self.settings))
+        self._apply_shadow_colour()
         self.grid.set_columns(int(self.settings.get("columns", 3)))
         current = self.grid.current
         self.refresh_grid(keep_id=current.id if current else None)

@@ -213,11 +213,11 @@ class TestKeyRouting:
 class TestFillPanel:
     def test_one_field_per_slot(self, palette):
         palette.fill.load(Template(title="T", body="{{a}} {{b|x}} {{a}}"))
-        assert [e.slot.name for e in palette.fill._edits] == ["a", "b"]
+        assert [f.slot.name for f in palette.fill._fields] == ["a", "b"]
 
     def test_rendered_uses_typed_values(self, palette):
         palette.fill.load(Template(title="T", body="{{a}}-{{b|x}}"))
-        palette.fill._edits[0].setPlainText("hello")
+        palette.fill._fields[0].edit.setPlainText("hello")
         assert palette.fill.rendered() == "hello-x"
 
     def test_rendered_keeps_literal_token_when_empty_and_no_default(self, palette):
@@ -226,13 +226,13 @@ class TestFillPanel:
 
     def test_multiline_value_survives(self, palette):
         palette.fill.load(Template(title="T", body="```{{code}}```"))
-        palette.fill._edits[0].setPlainText("line1\nline2")
+        palette.fill._fields[0].edit.setPlainText("line1\nline2")
         assert palette.fill.rendered() == "```line1\nline2```"
 
     def test_reload_replaces_previous_fields(self, palette):
         palette.fill.load(Template(title="A", body="{{a}} {{b}} {{c}}"))
         palette.fill.load(Template(title="B", body="{{z}}"))
-        assert [e.slot.name for e in palette.fill._edits] == ["z"]
+        assert [f.slot.name for f in palette.fill._fields] == ["z"]
 
     def test_escape_returns_to_the_grid(self, palette):
         from pcc.ui.palette import PAGE_FILL, PAGE_GRID
@@ -250,6 +250,135 @@ class TestFillPanel:
             QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier
         )
         assert not palette.fill.handle_key(event), "Shift+Enter must reach the editor"
+
+
+class TestChoiceSlots:
+    """``{{tone|blunt|warm}}`` -- chips, plus custom input that always wins."""
+
+    BODY = "Be {{tone|blunt|warm|formal}} about {{topic}}"
+
+    def _load(self, palette, body=BODY):
+        palette.fill.load(Template(title="T", body=body))
+        return palette.fill._fields[0]
+
+    def test_only_choice_slots_get_a_chip_row(self, palette):
+        self._load(palette)
+        rows = [f.options is not None for f in palette.fill._fields]
+        assert rows == [True, False]
+
+    def test_first_option_is_preselected(self, palette):
+        assert self._load(palette).value() == "blunt"
+
+    def test_the_field_stays_hidden_until_custom_is_chosen(self, palette):
+        field = self._load(palette)
+        assert not field.edit.isVisibleTo(field)
+        field.options.select(field.options.CUSTOM)
+        assert field.edit.isVisibleTo(field)
+
+    def test_stepping_selects_as_it_moves(self, palette):
+        field = self._load(palette)
+        field.options.step(1)
+        assert field.value() == "warm"
+
+    def test_stepping_wraps_through_custom_back_to_the_first(self, palette):
+        field = self._load(palette)
+        for _ in range(3):                      # blunt -> warm -> formal -> custom
+            field.options.step(1)
+        assert field.options.is_custom
+        field.options.step(1)
+        assert field.value() == "blunt"
+
+    def test_stepping_backwards_from_the_first_lands_on_custom(self, palette):
+        field = self._load(palette)
+        field.options.step(-1)
+        assert field.options.is_custom
+
+    def test_custom_text_beats_every_option(self, palette):
+        field = self._load(palette)
+        field.type_into_custom("wry")
+        assert field.value() == "wry"
+        assert palette.fill.rendered() == "Be wry about {{topic}}"
+
+    def test_switching_back_to_a_chip_keeps_the_typed_text(self, palette):
+        # Coming back to "custom" after a detour must not lose the answer.
+        field = self._load(palette)
+        field.type_into_custom("wry")
+        field.options.select(0)
+        assert field.value() == "blunt"
+        field.options.select(field.options.CUSTOM)
+        assert field.value() == "wry"
+
+    def test_empty_custom_falls_back_to_the_literal_token(self, palette):
+        # No preselection: nothing may be chosen on the user's behalf, and an
+        # unanswered slot still survives into the paste.
+        field = self._load(palette, "Be {{tone||warm|blunt}}")
+        assert field.options.is_custom
+        assert palette.fill.rendered() == "Be {{tone}}"
+
+    def test_render_uses_the_chosen_option(self, palette):
+        field = self._load(palette)
+        field.options.select(2)
+        assert palette.fill.rendered() == "Be formal about {{topic}}"
+
+    def test_preview_follows_the_selection(self, palette):
+        field = self._load(palette)
+        field.options.select(1)
+        assert "warm" in palette.fill.preview.text()
+
+    def test_clicking_a_chip_selects_it(self, palette):
+        field = self._load(palette)
+        field.options._chips[2].clicked.emit()
+        assert field.value() == "formal"
+
+    def test_a_long_option_list_does_not_inflate_the_minimum_height(self, palette):
+        # Qt derives a height-for-width widget's minimum height from its
+        # narrowest layout -- for a wrapping row, every chip on a line of its
+        # own. A field reporting that as its minimum would push the palette
+        # taller than window_height asks for, however wide the window really is.
+        body = "{{s|" + "|".join(f"option {i}" for i in range(8)) + "}}"
+        field = self._load(palette, body)
+        chip = field.options._chips[0].sizeHint().height()
+        assert field.minimumSizeHint().height() < 4 * chip
+
+
+class TestChoiceSlotKeys:
+    """The chip row's keys, routed exactly as the palette's event filter does."""
+
+    @pytest.fixture
+    def field(self, palette):
+        palette.fill.load(Template(title="T", body="Be {{tone|blunt|warm}} now"))
+        palette.fill.focus_first()
+        return palette.fill._fields[0]
+
+    def _key(self, palette, key, text=""):
+        return palette.fill.handle_key(
+            QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier, text)
+        )
+
+    def test_right_moves_to_the_next_option(self, palette, field):
+        assert self._key(palette, Qt.Key.Key_Right)
+        assert field.value() == "warm"
+
+    def test_end_jumps_to_custom(self, palette, field):
+        assert self._key(palette, Qt.Key.Key_End)
+        assert field.options.is_custom
+
+    def test_typing_moves_into_the_custom_field(self, palette, field):
+        # A printable key on a chip row means "none of these" -- and the
+        # keystroke that said so must not be swallowed.
+        assert self._key(palette, Qt.Key.Key_W, text="w")
+        assert field.value() == "w"
+
+    def test_arrows_are_left_alone_inside_a_text_field(self, palette, field):
+        field.options.select(field.options.CUSTOM)
+        field.edit.setFocus()
+        assert not self._key(palette, Qt.Key.Key_Right), "caret movement, not selection"
+
+    def test_enter_still_submits_from_a_chip_row(self, palette, field):
+        submitted: list[str] = []
+        palette.fill.submitted.connect(submitted.append)
+        assert self._key(palette, Qt.Key.Key_Return)
+        assert submitted == ["Be blunt now"]
 
 
 class TestAuthoring:

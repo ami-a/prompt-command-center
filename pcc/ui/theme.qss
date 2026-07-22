@@ -25,10 +25,14 @@
 
 /* --- outer card ---------------------------------------------------------- */
 
+/* The palette is summoned over an unknown desktop, so its edge has to be read
+   as an edge instantly. The border therefore carries the scheme's accent rather
+   than the surface tint every inner border uses -- it is the one place in the
+   UI where "part of the theme" matters less than "where the window stops". */
 #Card {
     background-color: ${BG};
-    border: 1px solid ${BORDER};
-    border-radius: 12px;
+    border: 2px solid ${CARD_BORDER};
+    border-radius: 13px;
 }
 
 /* --- header -------------------------------------------------------------- */
@@ -165,6 +169,47 @@ QLineEdit#Field, QPlainTextEdit#Field {
 QLineEdit#Field:focus, QPlainTextEdit#Field:focus {
     border: 1px solid ${ACCENT};
     background-color: ${PANEL_FOCUS};
+}
+
+/* --- choice chips -------------------------------------------------------- */
+
+#OptionRow {
+    background: transparent;
+}
+
+/* `active` mirrors the row's focus onto its chips: the chosen chip fills in
+   only on the row Left/Right is actually driving, so a panel of several choice
+   slots still has exactly one obviously live control. */
+#Chip {
+    background-color: ${PANEL};
+    border: 1px solid ${BORDER};
+    border-radius: 11px;
+    padding: 3px 10px;
+    font-size: ${FS_TINY}px;
+    font-weight: 600;
+    color: ${MUTED};
+}
+
+#Chip:hover {
+    background-color: ${TILE_HOVER};
+    color: ${TEXT};
+}
+
+#Chip[custom="true"] {
+    color: ${FAINT};
+    border: 1px dashed ${BORDER};
+}
+
+#Chip[chosen="true"] {
+    background-color: ${TILE_SELECTED};
+    border: 1px solid ${ACCENT};
+    color: ${ACCENT_SOFT};
+}
+
+#Chip[chosen="true"][active="true"] {
+    background-color: ${ACCENT};
+    border: 1px solid ${ACCENT};
+    color: ${ON_ACCENT};
 }
 
 #Preview {

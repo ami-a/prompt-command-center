@@ -11,12 +11,34 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Iterator
 
-# {{ name | default }} -- name may not contain '|' or '}'; default may not
-# contain '}'. Both sides are whitespace-trimmed. A missing '|' yields None for
-# the default, which is what distinguishes "no default" from "empty default".
+# {{ name | tail }} -- name may not contain '|' or '}'; the tail may not contain
+# '}'. Both sides are whitespace-trimmed. A missing '|' yields None for the
+# tail, which is what distinguishes "no default" from "empty default".
 PLACEHOLDER_RE = re.compile(r"\{\{\s*([^}|]+?)\s*(?:\|\s*([^}]*?)\s*)?\}\}")
 
+#: The tail splits into options on every *unescaped* pipe, so a default that
+#: genuinely contains one can still be written as ``\|``.
+_OPTION_SPLIT_RE = re.compile(r"(?<!\\)\|")
+
 MAX_TITLE_LEN = 120
+
+
+def _split_tail(tail: str | None) -> tuple[str | None, tuple[str, ...]]:
+    """Split a placeholder's tail into ``(default, options)``.
+
+    One part is a plain default (``{{lang|Python}}``); two or more make the slot
+    a choice (``{{lang|Python|Go|Rust}}``) whose first option is also its
+    default. Writing the first part empty (``{{lang||Go|Rust}}``) offers the
+    options without preselecting one.
+    """
+    if tail is None:
+        return None, ()
+    parts = [part.strip().replace("\\|", "|") for part in _OPTION_SPLIT_RE.split(tail)]
+    if len(parts) == 1:
+        # "" stays "" rather than becoming None: an explicitly empty default is
+        # a different statement from no default at all.
+        return parts[0], ()
+    return parts[0] or None, tuple(part for part in parts if part)
 
 
 def new_id(prefix: str) -> str:
@@ -29,10 +51,15 @@ class Slot:
 
     Repeated occurrences of the same ``name`` collapse into a single Slot, so
     the fill panel shows one input that drives every occurrence.
+
+    ``options`` is non-empty only for a choice slot, and never removes the
+    ability to type something else: the offered values are shortcuts, not a
+    closed set.
     """
 
     name: str
     default: str | None = None
+    options: tuple[str, ...] = ()
 
     @property
     def token(self) -> str:
@@ -40,7 +67,15 @@ class Slot:
         return "{{" + self.name + "}}"
 
     @property
+    def has_options(self) -> bool:
+        return bool(self.options)
+
+    @property
     def placeholder_hint(self) -> str:
+        # A choice slot's field is the *custom* answer, so hinting it with the
+        # default would suggest typing what a chip already offers.
+        if self.options:
+            return "something else…"
         return self.default if self.default else self.name
 
 
@@ -48,34 +83,36 @@ def parse_slots(body: str) -> list[Slot]:
     """Return the distinct slots of ``body`` in first-appearance order.
 
     When the same name appears more than once, the first occurrence that
-    carries a default wins; this lets you write the default once and refer to
-    the slot bare afterwards.
+    carries a default or options wins; this lets you write the choices once and
+    refer to the slot bare afterwards.
     """
+    def specified(slot: Slot) -> bool:
+        return slot.default is not None or bool(slot.options)
+
     slots: dict[str, Slot] = {}
     for match in PLACEHOLDER_RE.finditer(body):
         name = match.group(1).strip()
         if not name:
             continue
-        default = match.group(2)
+        candidate = Slot(name, *_split_tail(match.group(2)))
         existing = slots.get(name)
-        if existing is None:
-            slots[name] = Slot(name, default)
-        elif existing.default is None and default is not None:
-            slots[name] = Slot(name, default)
+        if existing is None or (not specified(existing) and specified(candidate)):
+            slots[name] = candidate
     return list(slots.values())
 
 
 def readable(body: str) -> str:
     """Collapse a body to flowing prose for display.
 
-    Placeholders become their default, or their bare name when they have none,
-    so a tile reads like the sentence it will produce instead of a wall of
-    ``{{braces}}``. Never use this for pasting -- see :func:`render`.
+    Placeholders become their default -- the first option, for a choice slot --
+    or their bare name when they have none, so a tile reads like the sentence it
+    will produce instead of a wall of ``{{braces}}``. Never use this for
+    pasting -- see :func:`render`.
     """
 
     def substitute(match: re.Match[str]) -> str:
         name = match.group(1).strip()
-        default = match.group(2)
+        default, _ = _split_tail(match.group(2))
         return default if default else name
 
     return " ".join(PLACEHOLDER_RE.sub(substitute, body).split())
@@ -87,7 +124,7 @@ def render(body: str, values: dict[str, str] | None = None) -> str:
     Resolution order per placeholder:
 
     1. a non-empty user value,
-    2. the placeholder's own default,
+    2. the placeholder's own default -- the first option, for a choice slot,
     3. the literal ``{{name}}`` token.
 
     Step 3 is the deliberate "nothing is silently lost" behaviour: an unfilled
@@ -103,7 +140,7 @@ def render(body: str, values: dict[str, str] | None = None) -> str:
         value = values.get(name, "").strip()
         if value:
             return value
-        default = match.group(2)
+        default, _ = _split_tail(match.group(2))
         if default:
             return default
         return "{{" + name + "}}"

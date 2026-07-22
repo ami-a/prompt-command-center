@@ -94,8 +94,8 @@ def default_library() -> Library:
                     Template(
                         title="Refactor for readability",
                         body=(
-                            "Refactor the following {{language|Python}} code for "
-                            "{{goal|readability}}.\n\n"
+                            "Refactor the following {{language|Python|TypeScript|Go|Rust|SQL}} "
+                            "code for {{goal|readability|performance|testability}}.\n\n"
                             "Keep the public API unchanged, preserve behaviour exactly, "
                             "and explain each change in one line.\n\n"
                             "```\n{{code}}\n```"
@@ -105,7 +105,8 @@ def default_library() -> Library:
                         title="Explain this code",
                         body=(
                             "Explain what this code does, step by step, for a "
-                            "{{audience|senior engineer}}.\n\n"
+                            "{{audience|senior engineer|junior developer|"
+                            "non-programmer}}.\n\n"
                             "Call out any bug, race condition, or edge case you notice.\n\n"
                             "```\n{{code}}\n```"
                         ),
@@ -113,7 +114,8 @@ def default_library() -> Library:
                     Template(
                         title="Write tests",
                         body=(
-                            "Write {{framework|pytest}} tests for the code below.\n\n"
+                            "Write {{framework|pytest|unittest|vitest|jest|go test}} "
+                            "tests for the code below.\n\n"
                             "Cover the happy path, boundary values, and failure modes. "
                             "No mocks unless a real dependency makes the test slow or "
                             "non-deterministic.\n\n"
@@ -138,21 +140,25 @@ def default_library() -> Library:
                         title="Tighten this text",
                         body=(
                             "Rewrite the text below to be clearer and shorter without "
-                            "losing meaning. Keep the tone {{tone|professional}}.\n\n"
+                            "losing meaning. Keep the tone "
+                            "{{tone|professional|friendly|blunt|academic}}.\n\n"
                             "{{text}}"
                         ),
                     ),
                     Template(
                         title="Summarise",
                         body=(
-                            "Summarise the following in {{length|five bullet points}}. "
+                            "Summarise the following in "
+                            "{{length|five bullet points|one sentence|a short "
+                            "paragraph}}. "
                             "Lead with the single most important takeaway.\n\n{{text}}"
                         ),
                     ),
                     Template(
                         title="Translate",
                         body=(
-                            "Translate the text below into {{target|Hebrew}}. "
+                            "Translate the text below into "
+                            "{{target|Hebrew|English|Spanish|French|German}}. "
                             "Preserve formatting and keep proper nouns untranslated.\n\n"
                             "{{text}}"
                         ),

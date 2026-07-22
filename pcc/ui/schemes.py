@@ -84,6 +84,15 @@ class Scheme:
             "TILE_SELECTED": _mix(tile, accent, 0.06).name(),
             "BORDER": surface(0.155).name(),
             "BORDER_HOVER": surface(0.28).name(),
+            # The window's own edge, not an inner one: mixed most of the way to
+            # the accent so the palette reads as a distinct object over whatever
+            # desktop it was summoned onto, while still being darker than the
+            # accent itself and so never competing with the selected tile.
+            "CARD_BORDER": _mix(bg, accent, 0.62).name(),
+            # The drop shadow behind that edge. Kept dark -- it is a shadow, not
+            # a glow -- but carrying the accent's hue, so the halo around the
+            # window belongs to the scheme instead of being neutral black.
+            "CARD_SHADOW": _hsl(hue, 0.85, 0.04).name(),
             "SCROLL": surface(0.19).name(),
             "SCROLL_HOVER": surface(0.28).name(),
             "ACCENT": accent.name(),

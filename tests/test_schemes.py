@@ -81,6 +81,26 @@ class TestTokens:
         t = schemes.get(key).tokens()
         assert t["TILE_SELECTED"] != t["TILE"]
 
+    @ALL
+    def test_the_window_edge_is_unmistakable(self, key):
+        """The palette appears over an unknown desktop, so its own border has to
+        carry far more than the inner ones do."""
+        t = schemes.get(key).tokens()
+        assert _contrast(t["CARD_BORDER"], t["BG"]) >= 2.0
+        assert _contrast(t["CARD_BORDER"], t["BG"]) > _contrast(t["BORDER"], t["BG"])
+
+    @ALL
+    def test_the_window_edge_never_outshines_the_accent(self, key):
+        # A border brighter than the accent would pull the eye to the frame
+        # instead of to the selected tile.
+        t = schemes.get(key).tokens()
+        assert QColor(t["CARD_BORDER"]).lightnessF() < QColor(t["ACCENT"]).lightnessF()
+
+    @ALL
+    def test_the_card_shadow_stays_a_shadow(self, key):
+        t = schemes.get(key).tokens()
+        assert QColor(t["CARD_SHADOW"]).lightnessF() <= 0.10
+
 
 class TestLookup:
     def test_unknown_scheme_falls_back_to_default(self):

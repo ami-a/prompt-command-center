@@ -53,7 +53,11 @@ class EditorPanel(QWidget):
         self.tab_combo.setObjectName("Field")
         layout.addWidget(self.tab_combo)
 
-        layout.addWidget(self._label("BODY   —   {{name}} or {{name|default}} marks a fill-in slot"))
+        layout.addWidget(self._label(
+            "BODY   —   {{name}} marks a fill-in slot · "
+            "{{name|default}} gives it a default · "
+            "{{name|one|two|three}} offers a choice"
+        ))
         self.body_edit = QPlainTextEdit()
         self.body_edit.setObjectName("Field")
         self.body_edit.setTabChangesFocus(True)

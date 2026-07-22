@@ -47,6 +47,59 @@ class TestParseSlots:
         assert parse_slots("{{ unclosed") == []
 
 
+class TestOptions:
+    """``{{name|a|b|c}}`` -- a choice, whose first option is also its default."""
+
+    def test_options_are_captured_in_order(self):
+        (slot,) = parse_slots("{{tone|blunt|warm|formal}}")
+        assert slot.options == ("blunt", "warm", "formal")
+
+    def test_first_option_is_the_default(self):
+        (slot,) = parse_slots("{{tone|blunt|warm}}")
+        assert slot.default == "blunt"
+
+    def test_a_lone_default_is_not_a_choice(self):
+        (slot,) = parse_slots("{{tone|blunt}}")
+        assert slot.options == () and not slot.has_options
+
+    def test_each_option_is_trimmed(self):
+        (slot,) = parse_slots("{{tone|  blunt  |  warm  }}")
+        assert slot.options == ("blunt", "warm")
+
+    def test_leading_empty_option_offers_choices_without_preselecting(self):
+        (slot,) = parse_slots("{{tone||warm|blunt}}")
+        assert (slot.default, slot.options) == (None, ("warm", "blunt"))
+
+    def test_escaped_pipe_stays_inside_one_value(self):
+        # Otherwise a default containing a pipe could never be written at all.
+        (slot,) = parse_slots(r"{{cmd|ls \| wc}}")
+        assert (slot.default, slot.options) == ("ls | wc", ())
+
+    def test_options_are_adopted_from_a_later_occurrence(self):
+        (slot,) = parse_slots("{{tone}} then {{tone|blunt|warm}}")
+        assert slot.options == ("blunt", "warm")
+
+    def test_first_specification_wins_across_repeats(self):
+        (slot,) = parse_slots("{{tone|blunt|warm}} then {{tone|formal}}")
+        assert slot.options == ("blunt", "warm")
+
+    def test_render_falls_back_to_the_first_option(self):
+        assert render("Be {{tone|blunt|warm}}", {}) == "Be blunt"
+
+    def test_render_accepts_a_value_outside_the_options(self):
+        # The options are shortcuts, never a closed set.
+        assert render("Be {{tone|blunt|warm}}", {"tone": "wry"}) == "Be wry"
+
+    def test_render_keeps_the_token_when_nothing_is_preselected(self):
+        assert render("Be {{tone||warm}}", {}) == "Be {{tone}}"
+
+    def test_render_unescapes_a_literal_pipe(self):
+        assert render(r"{{cmd|ls \| wc}}", {}) == "ls | wc"
+
+    def test_readable_shows_the_first_option(self):
+        assert readable("Be {{tone|blunt|warm}}") == "Be blunt"
+
+
 class TestRender:
     def test_user_value_wins(self):
         assert render("{{lang|Python}}", {"lang": "Rust"}) == "Rust"
