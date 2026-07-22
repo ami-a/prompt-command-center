@@ -434,6 +434,59 @@ class TestComposition:
         assert pasted == ["Do it. ALWAYS TEST"]
 
 
+class TestCare:
+    """Undo instead of confirm, and the adaptive hint bar."""
+
+    def test_delete_is_undoable(self, palette):
+        tab = palette.library.tabs[0]
+        before = [t.id for t in tab.templates]
+        palette.grid.set_index(0)
+        palette._delete_template()
+        assert len(palette.library.tabs[0].templates) == len(before) - 1
+        palette._undo()
+        assert [t.id for t in palette.library.tabs[0].templates] == before
+
+    def test_undo_with_empty_journal_is_safe(self, palette):
+        palette._undo()  # must not raise
+
+    def test_delete_does_not_prompt(self, palette, monkeypatch):
+        # If a confirmation dialog were still there, this would hang the test;
+        # asserting the template simply vanishes proves there is none.
+        called = []
+        monkeypatch.setattr(palette, "_confirm", lambda *_: called.append(True) or True)
+        palette.grid.set_index(0)
+        palette._delete_template()
+        assert called == []
+
+    def test_hints_fade_with_familiarity(self, palette):
+        from pcc.ui.palette import HINTS, MINIMAL_HINTS, PAGE_FILL, SHORT_HINTS
+
+        assert palette._hint_for(PAGE_FILL) == HINTS[PAGE_FILL]
+        for _ in range(30):
+            palette.usage.record_page("fill")
+        assert palette._hint_for(PAGE_FILL) == SHORT_HINTS[PAGE_FILL]
+        for _ in range(100):
+            palette.usage.record_page("fill")
+        assert palette._hint_for(PAGE_FILL) == MINIMAL_HINTS[PAGE_FILL]
+
+    def test_health_report_summarises_findings(self, palette):
+        from pcc.model import Template
+
+        palette.library.tabs[0].templates.append(Template(title="Blank", body="  ", id="blank"))
+        summary, detail = palette._health_report()
+        assert "empty" in summary
+        assert "empty body" in detail
+
+    def test_full_preview_toggle_shows_untruncated_text(self, palette):
+        from pcc.model import Template
+
+        body = "X" * 600
+        palette.fill.load(Template(title="T", body=body))
+        assert "…" in palette.fill.preview.text()          # collapsed by default
+        palette.fill.toggle_full_preview()
+        assert palette.fill.preview.text() == body          # full, untruncated
+
+
 class TestChoiceSlots:
     """``{{tone|blunt|warm}}`` -- chips, plus custom input that always wins."""
 

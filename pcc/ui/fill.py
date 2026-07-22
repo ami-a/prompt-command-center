@@ -270,6 +270,10 @@ class FillPanel(QWidget):
         self._fields: list[SlotField] = []
         self._resolve: object = None          # Callable[[str], str | None] | None
         self._prefill_field: SlotField | None = None
+        #: Ctrl+P expands the preview from a one-line glance to the whole prompt,
+        #: so you can actually read what will paste -- and catch a stray literal
+        #: {{slot}} -- before committing.
+        self._full_preview = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -357,6 +361,7 @@ class FillPanel(QWidget):
         self.template = template
         self._resolve = resolve
         self._prefill_field = None
+        self._full_preview = False
         self.title.setText(template.title)
 
         self._fields.clear()
@@ -433,9 +438,19 @@ class FillPanel(QWidget):
 
     def _update_preview(self) -> None:
         full = self.rendered()
-        text = " ".join(full.split())
-        self.preview.setText(text[:400] + ("…" if len(text) > 400 else ""))
+        if self._full_preview:
+            # The real thing: newlines intact, no truncation, scrollable.
+            self.preview.setText(full)
+            self.preview.setMaximumHeight(400)
+        else:
+            text = " ".join(full.split())
+            self.preview.setText(text[:400] + ("…" if len(text) > 400 else ""))
+            self.preview.setMaximumHeight(96)
         self.estimate.setText(self._estimate(full))
+
+    def toggle_full_preview(self) -> None:
+        self._full_preview = not self._full_preview
+        self._update_preview()
 
     @staticmethod
     def _estimate(text: str) -> str:
@@ -483,6 +498,11 @@ class FillPanel(QWidget):
 
         if key == Qt.Key.Key_Escape:
             self.cancelled.emit()
+            return True
+
+        # Ctrl+P expands/collapses the full rendered preview.
+        if key == Qt.Key.Key_P and modifiers & Qt.KeyboardModifier.ControlModifier:
+            self.toggle_full_preview()
             return True
 
         # Ctrl+. is the quick-fix binding people already have in their fingers.

@@ -31,8 +31,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import compose, context, placement, spell, store, winapi
+from .. import compose, context, lint, placement, spell, store, winapi
 from ..context import is_magic
+from ..journal import UndoJournal
 from ..model import Library, Tab, Template, expand_includes, new_id, render
 from ..usage import UsageStore
 from ..search import search as run_search
@@ -49,13 +50,13 @@ PAGE_GRID, PAGE_FILL, PAGE_EDITOR, PAGE_SETTINGS = 0, 1, 2, 3
 
 HINTS = {
     PAGE_GRID: (
-        "<b>↑↓←→</b> move · <b>type</b> filter · <b>⏎</b> paste · <b>^⏎</b> paste raw · "
-        "<b>⇥</b> tab · <b>⌥1-9</b> jump · <b>^N</b> new · <b>F2</b> edit · "
-        "<b>Esc</b> hide · <b>^Q</b> quit"
+        "<b>↑↓←→</b> move · <b>type</b> filter · <b>⏎</b> paste · <b>^Space</b> mark · "
+        "<b>^N</b> new · <b>F2</b> edit · <b>^Z</b> undo · <b>^H</b> health · "
+        "<b>Esc</b> hide"
     ),
     PAGE_FILL: (
         "<b>⇥/⇧⇥</b> next slot · <b>←→</b> option · <b>type</b> your own · "
-        "<b>⇧⏎</b> newline · <b>^.</b> spelling · <b>⏎</b> paste · <b>Esc</b> back"
+        "<b>^P</b> full preview · <b>⇧⏎</b> newline · <b>⏎</b> paste · <b>Esc</b> back"
     ),
     PAGE_EDITOR: (
         "<b>⇥</b> next field · <b>^S</b> save · <b>^.</b> fix spelling · "
@@ -66,6 +67,27 @@ HINTS = {
         "<b>⏎</b> save · <b>Esc</b> revert"
     ),
 }
+
+#: Scaffolding decay: once you have used a page enough, the full hint bar is a
+#: reminder you stopped reading in week one and are now paying screen space for.
+#: So it shrinks to the essentials, then to almost nothing, as competence grows.
+SHORT_HINTS = {
+    PAGE_GRID: "<b>type</b> filter · <b>⏎</b> paste · <b>^Space</b> mark · <b>Esc</b> hide",
+    PAGE_FILL: "<b>⇥</b> slot · <b>⏎</b> paste · <b>Esc</b> back",
+    PAGE_EDITOR: "<b>^S</b> save · <b>Esc</b> cancel",
+    PAGE_SETTINGS: "<b>↑↓←→</b> edit · <b>⏎</b> save · <b>Esc</b> revert",
+}
+MINIMAL_HINTS = {
+    PAGE_GRID: "<b>Esc</b>",
+    PAGE_FILL: "<b>⏎</b> · <b>Esc</b>",
+    PAGE_EDITOR: "<b>^S</b> · <b>Esc</b>",
+    PAGE_SETTINGS: "<b>⏎</b> · <b>Esc</b>",
+}
+PAGE_NAMES = {PAGE_GRID: "grid", PAGE_FILL: "fill", PAGE_EDITOR: "editor", PAGE_SETTINGS: "settings"}
+
+#: Use counts at which a page's hint bar steps down a tier.
+HINT_FAMILIAR = 30
+HINT_EXPERT = 100
 
 
 class PaletteWindow(QWidget):
@@ -127,6 +149,8 @@ class PaletteWindow(QWidget):
         #: Template ids marked with Ctrl+Space, in mark order, for composition.
         #: Reset on every summon so a stale mark never rides into a new session.
         self._marked: list[str] = []
+        #: In-session undo for destructive edits, so delete need not ask first.
+        self.journal = UndoJournal()
         self._build_ui()
         self._wire()
         self._apply_spellcheck()
@@ -396,9 +420,11 @@ class PaletteWindow(QWidget):
             self._reposition()
         self._go_to_grid()
 
-    def _save(self) -> None:
+    def _save(self, snapshot: bool = False) -> None:
         self.before_save()
-        store.save_library(self.library, store.library_path(self.settings))
+        store.save_library(
+            self.library, store.library_path(self.settings), snapshot=snapshot
+        )
 
     # --- show / hide --------------------------------------------------------
 
@@ -716,9 +742,23 @@ class PaletteWindow(QWidget):
 
     # --- pages --------------------------------------------------------------
 
+    def _hint_for(self, page: int) -> str:
+        """The hint bar for ``page``, faded to match how well it is known."""
+        count = self.usage.page_count(PAGE_NAMES.get(page, str(page)))
+        if count >= HINT_EXPERT:
+            return MINIMAL_HINTS[page]
+        if count >= HINT_FAMILIAR:
+            return SHORT_HINTS[page]
+        return HINTS[page]
+
     def _set_page(self, page: int) -> None:
+        # Record a page as "used" only on a real transition into it, so the many
+        # internal _set_page(GRID) calls per summon do not inflate the count.
+        if page != self.stack.currentIndex():
+            self.usage.record_page(PAGE_NAMES.get(page, str(page)))
+            self._usage_timer.start(5000)
         self.stack.setCurrentIndex(page)
-        self.hints.setText(HINTS[page])
+        self.hints.setText(self._hint_for(page))
         self.search.setVisible(page == PAGE_GRID)
         self.tabs.setVisible(page == PAGE_GRID)
         # Hiding widgets on a translucent frameless window leaves their pixels
@@ -810,18 +850,60 @@ class PaletteWindow(QWidget):
         self.refresh_grid(keep_id=clone.id)
         self._show_toast("DUPLICATED")
 
+    def _snapshot(self, label: str) -> None:
+        """Bank the current library so the next destructive edit is undoable."""
+        self.journal.record(self.library.to_dict(), label)
+
+    def _undo(self) -> None:
+        entry = self.journal.undo()
+        if entry is None:
+            self._show_toast("NOTHING TO UNDO")
+            return
+        snapshot, label = entry
+        self.library = Library.from_dict(snapshot)
+        self._save()
+        self.refresh_tabs(keep_index=min(self.tabs.index, max(0, len(self.library.tabs) - 1)))
+        self._show_toast(f"UNDID {label}")
+
+    def _health_report(self) -> tuple[str, str]:
+        """(summary, detail) for the library health check."""
+        findings = lint.lint(self.library, self.usage.frecency)
+        summary = lint.summary(findings)
+        if not findings:
+            return summary, "Nothing to clean up. 🎉"
+        by_tab: dict[str, list[str]] = {}
+        for finding in findings:
+            by_tab.setdefault(finding.tab_name, []).append(finding.message)
+        detail_lines = []
+        for tab_name, messages in by_tab.items():
+            detail_lines.append(f"[{tab_name}]")
+            detail_lines.extend(f"  • {m}" for m in messages)
+        return summary, "\n".join(detail_lines)
+
+    def _show_health(self) -> None:
+        summary, detail = self._health_report()
+        self._show_toast(summary.upper())
+        with self.modal_guard():
+            box = QMessageBox(self)
+            box.setWindowTitle("Library health")
+            box.setText(summary)
+            box.setInformativeText(detail)
+            box.setIcon(QMessageBox.Icon.Information)
+            box.exec()
+
     def _delete_template(self) -> None:
         template = self.grid.current
         located = self.library.locate(template.id) if template else None
         if template is None or located is None:
             return
         tab, index = located
-        if not self._confirm(f"Delete “{template.title}”?"):
-            return
+        # No confirmation dialog: delete now, keep an undo. A prompt on every
+        # delete trains click-through; undo catches the mistake without one.
+        self._snapshot("delete")
         tab.templates.pop(index)
-        self._save()
+        self._save(snapshot=True)
         self.refresh_grid()
-        self._show_toast("DELETED")
+        self._show_toast("DELETED · ^Z undo")
 
     def _move_template(self, delta: int) -> None:
         template = self.grid.current
@@ -869,15 +951,18 @@ class PaletteWindow(QWidget):
             self._show_toast("LAST TAB")
             return
         count = len(tab.templates)
+        # A tab can destroy many templates at once, so this one keeps a
+        # confirmation -- but still banks an undo as a second safety net.
         if not self._confirm(
             f"Delete tab “{tab.name}”" + (f" and its {count} templates?" if count else "?")
         ):
             return
+        self._snapshot("delete tab")
         index = self.tabs.index
         self.library.tabs.remove(tab)
-        self._save()
+        self._save(snapshot=True)
         self.refresh_tabs(keep_index=max(0, index - 1))
-        self._show_toast("TAB DELETED")
+        self._show_toast("TAB DELETED · ^Z undo")
 
     def _move_tab(self, delta: int) -> None:
         index = self.tabs.index
@@ -1046,6 +1131,13 @@ class PaletteWindow(QWidget):
             return True
         if control and key == Qt.Key.Key_Delete:
             self._delete_tab() if shift else self._delete_template()
+            return True
+        if control and key == Qt.Key.Key_Z:
+            self._undo()
+            return True
+        # Ctrl+H opens the library health check.
+        if control and key == Qt.Key.Key_H:
+            self._show_health()
             return True
         # Ctrl+, is the near-universal "open preferences" binding.
         if key == Qt.Key.Key_Comma and control:

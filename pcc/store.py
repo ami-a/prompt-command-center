@@ -228,8 +228,42 @@ def load_library(path: Path | None = None) -> Library:
         return library
 
 
-def save_library(library: Library, path: Path | None = None) -> None:
+#: How many rotating on-disk copies of the library to keep. Cheap insurance --
+#: they are small -- so a bad hand-edit or a runaway script is always one file
+#: away from recovery even across sessions, where the in-memory undo ring cannot
+#: reach.
+SNAPSHOT_KEEP = 10
+
+
+def snapshot_dir(path: Path | None = None) -> Path:
+    return (path or library_path()).parent / "snapshots"
+
+
+def write_snapshot(library: Library, path: Path | None = None) -> None:
+    """Drop a timestamped copy of the library and prune to the newest few.
+
+    Best-effort and silent: a failed snapshot must never block or break a save.
+    """
+    try:
+        target = path or library_path()
+        folder = snapshot_dir(target)
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        _atomic_write(
+            folder / f"{target.stem}-{stamp}.json",
+            json.dumps(library.to_dict(), indent=2, ensure_ascii=False),
+        )
+        snaps = sorted(folder.glob(f"{target.stem}-*.json"))
+        for stale in snaps[:-SNAPSHOT_KEEP]:
+            stale.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def save_library(library: Library, path: Path | None = None, snapshot: bool = False) -> None:
     path = path or library_path()
+    if snapshot:
+        write_snapshot(library, path)
     _atomic_write(path, json.dumps(library.to_dict(), indent=2, ensure_ascii=False))
 
 
