@@ -72,7 +72,9 @@ class TestTokens:
         and lose the hue that identifies the theme."""
         soft = QColor(schemes.get(key).tokens()["ACCENT_SOFT"])
         assert soft.lightnessF() <= 0.85
-        assert soft.saturationF() >= 0.40
+        # hslSaturationF, not saturationF -- the latter is HSV saturation and is
+        # naturally low for light colours, so it would pass regardless.
+        assert soft.hslSaturationF() >= 0.50
 
     @ALL
     def test_selected_tile_is_distinguishable_from_a_plain_one(self, key):

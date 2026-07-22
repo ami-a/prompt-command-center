@@ -10,3 +10,4 @@ spike/*.err
 spike/received.txt
 spike/result.txt
 spike/verify.err
+spike/*.txt

@@ -19,6 +19,7 @@ from typing import Any, Callable
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QScrollArea,
@@ -55,12 +56,6 @@ def available_mono_fonts() -> list[str]:
     return families or list(FALLBACK_FONTS)
 
 
-def available_ui_fonts() -> list[str]:
-    installed = set(QFontDatabase.families()) if QFontDatabase.families() else set()
-    proportional = [f for f in PROPORTIONAL_FONTS if not installed or f in installed]
-    return available_mono_fonts() + proportional
-
-
 @dataclass
 class Setting:
     """One editable row.
@@ -83,7 +78,10 @@ class Setting:
             try:
                 value = int(current)
             except (TypeError, ValueError):
-                value = low
+                # Garbage from a hand-edited file: snap to a known-good value
+                # rather than stepping away from it in whichever direction the
+                # user happened to press.
+                return low
             return max(low, min(high, value + delta * step))
         if not self.values:
             return current
@@ -126,8 +124,14 @@ def build_settings() -> list[Setting]:
     ]
 
 
-class SettingRow(QWidget):
-    """Label, hint, and current value; pooled like tiles."""
+class SettingRow(QFrame):
+    """Label, hint, and current value; pooled like tiles.
+
+    QFrame rather than QWidget on purpose: a plain QWidget ignores
+    ``background-color`` and ``border`` from a stylesheet unless it also sets
+    WA_StyledBackground, so the rows and the selection highlight would render
+    completely invisible.
+    """
 
     SWATCH = 13
 
@@ -182,17 +186,21 @@ class SettingRow(QWidget):
         through them a visual choice rather than a guess.
         """
         tokens = schemes.get(scheme_key).tokens()
-        colours = [tokens["ACCENT"], tokens["SECONDARY"], tokens["TILE"]]
+        # Accent, secondary, and the scheme's own background -- the third dot is
+        # what distinguishes, say, Matrix from Void at a glance.
+        colours = [tokens["ACCENT"], tokens["SECONDARY"], tokens["BG"]]
         size, gap = self.SWATCH, 4
         pixmap = QPixmap(len(colours) * size + (len(colours) - 1) * gap, size)
         pixmap.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
+        # Outline every dot, otherwise the dark background swatch is invisible
+        # against the row it sits on.
+        painter.setPen(QColor(tokens["BORDER_HOVER"]))
         for index, colour in enumerate(colours):
             painter.setBrush(QColor(colour))
-            painter.drawEllipse(index * (size + gap), 0, size, size)
+            painter.drawEllipse(index * (size + gap), 0, size - 1, size - 1)
         painter.end()
         return pixmap
 

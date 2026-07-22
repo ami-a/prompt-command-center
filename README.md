@@ -48,6 +48,7 @@ Then reload AutoHotkey and press **CapsLock+Space**.
 | `Ctrl+Del` / `Ctrl+Shift+Del` | Delete template / delete tab |
 | `Ctrl+←→↑↓` | Reorder the selected tile |
 | `Ctrl+Shift+← →` | Move the current tab |
+| `Ctrl+,` | **Settings** — colours, fonts, layout, with live preview |
 | `Ctrl+E` / `Ctrl+R` | Open `templates.json` / reload it |
 | `Ctrl+Shift+E` / `Ctrl+Shift+R` | Open `settings.json` / reload + restyle live |
 
@@ -73,18 +74,56 @@ file is watched and reloads live.
 
 The same `{{name}}` used twice shares one input and fills every occurrence.
 
-## Appearance and fonts
+## Appearance
 
-`%APPDATA%\PCC\settings.json` is written on first run. Edit it and press
-`Ctrl+Shift+R` (or tray → *Reload settings*) — the palette restyles in place, no
-restart.
+Press **`Ctrl+,`** inside the palette (or tray → *Settings…*).
+
+```
+┌─ PCC ─────────────────────────────────────────────────┐
+│ SETTINGS                                              │
+│ ▸ Colour scheme                        ●●● ‹ Cyber ›  │  ← accent / secondary
+│   the whole palette                                   │    / background dots
+│   Font                          ‹ Cascadia Code ›     │
+│   Font size                              ‹ 13 px ›    │
+│   Body text                          ‹ monospace ›    │
+│   Columns                                    ‹ 3 ›    │
+│ ↑↓ setting · ←→ change · PgUp/PgDn ×5 · ⏎ save · Esc revert │
+└───────────────────────────────────────────────────────┘
+```
+
+`↑↓` picks a setting, `←→` changes it, `PgUp`/`PgDn` steps numbers by five.
+**Every change applies instantly** — the panel you're editing is the preview.
+`Enter` saves; `Esc` reverts the *entire* session, so trying seven colour
+schemes costs nothing.
+
+### Colour schemes
+
+`Cyber` · `Synthwave` · `Matrix` · `Amber` · `Ice` · `Void` · `Blood`
+
+Each scheme is defined by only three colours — background, accent, secondary —
+and the other eighteen tokens are derived ([schemes.py](pcc/ui/schemes.py)).
+Surfaces are lifted toward a desaturated tint of the *accent* rather than
+toward neutral grey, which is what makes panels read as part of the theme
+instead of grey boxes on a coloured background. Adding a scheme is three hex
+codes, and the test suite checks WCAG contrast on all of them.
+
+Set `"accent": "#FF8800"` in `settings.json` to override any scheme's accent;
+every derived colour follows.
+
+### settings.json
+
+Written on first run to `%APPDATA%\PCC\settings.json`. Everything above is
+editable there too — `Ctrl+Shift+R` (or tray → *Reload settings*) restyles in
+place, and `Ctrl+Shift+E` opens the file.
 
 | Key | Default | Effect |
 |---|---|---|
-| `font_family` | `Cascadia Code, JetBrains Mono, Consolas, monospace` | UI font. Comma-separated fallback list; the first installed one wins |
-| `font_size` | `13` | Base size in px, clamped to 8–28. **Every other size derives from it**, so this one number rescales the whole palette |
-| `mono_preview` | `true` | `false` renders tile body + preview in a proportional face — prompt text is prose, and prose skims better proportional |
-| `preview_font_family` | `Segoe UI, Inter, sans-serif` | The proportional face used when `mono_preview` is `false` |
+| `scheme` | `cyber` | Colour scheme name |
+| `accent` | `null` | Hex override for the scheme's accent |
+| `font_family` | `Cascadia Code, …` | UI font; comma-separated, first installed wins |
+| `font_size` | `13` | Base px, clamped 8–28. **Every other size derives from it** |
+| `mono_preview` | `true` | `false` → proportional body text (prose skims better) |
+| `preview_font_family` | `Segoe UI, Inter, sans-serif` | Face used when `mono_preview` is off |
 | `window_width` / `window_height` | `720` / `520` | Palette size in logical px |
 | `columns` | `3` | Tiles per row |
 | `margin` | `40` | Inset from the active monitor's work area |
@@ -92,9 +131,9 @@ restart.
 | `restore_clipboard` | `true` | Put your previous clipboard back after pasting |
 | `library_path` | `null` | Point `templates.json` somewhere git-tracked |
 
-Sizes scale by ratio rather than fixed offsets, so the visual hierarchy holds up
-when you change `font_size`; tiles re-measure their own text on `FontChange`, so
-rows stay aligned and text still elides on a whole-line boundary.
+Sizes scale by ratio rather than fixed offsets, so the hierarchy holds up as
+`font_size` grows; tiles re-measure their own text on `FontChange`, so rows stay
+aligned and text still elides on a whole-line boundary.
 
 ## How it works
 
@@ -136,7 +175,10 @@ Three Win32 details do the heavy lifting:
 | [pcc/ipc.py](pcc/ipc.py) | The hidden window AHK posts to |
 | [pcc/placement.py](pcc/placement.py) | Multi-monitor, DPI-aware positioning |
 | [pcc/search.py](pcc/search.py) | Prefix → acronym → subsequence → fuzzy ranking |
-| [pcc/ui/](pcc/ui/) | Palette, grid, tiles, fill panel, editor, theme |
+| [pcc/ui/schemes.py](pcc/ui/schemes.py) | Colour schemes; 3 source colours → 21 derived tokens |
+| [pcc/ui/theme.py](pcc/ui/theme.py) | Resolves `theme.qss` against settings |
+| [pcc/ui/settings_panel.py](pcc/ui/settings_panel.py) | The `Ctrl+,` panel |
+| [pcc/ui/](pcc/ui/) | Palette, grid, tiles, fill panel, editor |
 
 ## Development
 

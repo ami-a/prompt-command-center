@@ -34,10 +34,16 @@ def _hsl(hue: float, saturation: float, lightness: float) -> QColor:
     return colour
 
 
+def _hue_of(colour: QColor) -> float:
+    """Hue in 0..1, with grey (-1) normalised to 0."""
+    hue = colour.hueF()
+    return hue if hue >= 0 else 0.0
+
+
 def _shift_lightness(colour: QColor, delta: float) -> QColor:
-    return _hsl(colour.hueF() if colour.hueF() >= 0 else 0.0,
-                colour.saturationF(),
-                colour.lightnessF() + delta)
+    # hslSaturationF, not saturationF: the latter is HSV saturation, and feeding
+    # it back into setHslF quietly desaturates every light colour.
+    return _hsl(_hue_of(colour), colour.hslSaturationF(), colour.lightnessF() + delta)
 
 
 @dataclass(frozen=True)
@@ -56,18 +62,16 @@ class Scheme:
         accent = QColor(self.accent)
         secondary = QColor(self.secondary)
 
-        hue = accent.hueF() if accent.hueF() >= 0 else 0.0
+        hue = _hue_of(accent)
         # Desaturated, light version of the accent. Surfaces lifted toward this
         # inherit a trace of the theme's hue instead of going flat grey.
         tint = _hsl(hue, 0.30, 0.72)
-        white = QColor(255, 255, 255)
 
         def surface(amount: float) -> QColor:
             return _mix(bg, tint, amount)
 
         tile = surface(0.07)
-        text = _mix(white, accent, 0.10)
-        text = _hsl(text.hueF() if text.hueF() >= 0 else hue, 0.22, 0.87)
+        text = _hsl(hue, 0.22, 0.87)
 
         return {
             "BG": bg.name(),
@@ -89,7 +93,7 @@ class Scheme:
             # saturation is floored so it stays a colour rather than a grey.
             "ACCENT_SOFT": _hsl(
                 hue,
-                max(0.55, accent.saturationF()),
+                max(0.55, accent.hslSaturationF()),
                 min(0.80, accent.lightnessF() + 0.18),
             ).name(),
             "ACCENT_DEEP": _shift_lightness(accent, -0.08).name(),
