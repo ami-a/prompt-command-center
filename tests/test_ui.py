@@ -372,6 +372,68 @@ class TestMemory:
         assert palette._reload_summary(lib, lib) == "RELOADED"
 
 
+class TestComposition:
+    """Ctrl+Space marks; Enter composes marked templates and modifiers."""
+
+    def _add_modifier(self, palette):
+        from pcc.model import Template
+
+        mod = Template(title="Concise", body="Be concise.", id="mod1", tags=["modifier"])
+        palette.library.tabs[0].templates.append(mod)
+        palette.refresh_tabs()
+        return mod
+
+    def test_ctrl_space_marks_the_current_tile(self, palette):
+        palette._toggle_mark()
+        assert len(palette._marked) == 1
+        palette._toggle_mark()
+        assert palette._marked == []
+
+    def test_marked_base_plus_modifier_composes(self, palette, monkeypatch):
+        pasted = []
+        monkeypatch.setattr(palette, "paste_text", pasted.append)
+        monkeypatch.setattr(winapi_module(), "clipboard_get_text", lambda: "")
+        self._add_modifier(palette)
+        # Mark the modifier, then activate with a plain base selected.
+        palette.grid.set_index(5)  # the appended modifier
+        palette._toggle_mark()
+        palette.grid.set_index(4)  # "Review", a slotless base
+        palette._activate_selection()
+        assert pasted == ["Review it\n\nBe concise."]
+        assert palette._marked == []  # marks cleared after use
+
+    def test_stacking_two_bases_joins_them(self, palette, monkeypatch):
+        pasted = []
+        monkeypatch.setattr(palette, "paste_text", pasted.append)
+        monkeypatch.setattr(winapi_module(), "clipboard_get_text", lambda: "")
+        # "Write tests" (idx 2, slotless) and "Review" (idx 4, slotless).
+        palette.grid.set_index(2)
+        palette._toggle_mark()
+        palette.grid.set_index(4)
+        palette._toggle_mark()
+        palette._activate_selection()
+        assert pasted == ["No slots here\n\nReview it"]
+
+    def test_trigger_clears_stale_marks(self, palette):
+        palette._toggle_mark()
+        assert palette._marked
+        palette.trigger()
+        assert palette._marked == []
+
+    def test_include_is_inlined_on_activate(self, palette, monkeypatch):
+        from pcc.model import Template
+
+        pasted = []
+        monkeypatch.setattr(palette, "paste_text", pasted.append)
+        monkeypatch.setattr(winapi_module(), "clipboard_get_text", lambda: "")
+        palette.library.tabs[0].templates.append(
+            Template(title="Rules", body="ALWAYS TEST", id="rules")
+        )
+        tmpl = Template(title="Uses", body="Do it. {{>rules}}", id="uses")
+        palette._activate(tmpl)
+        assert pasted == ["Do it. ALWAYS TEST"]
+
+
 class TestChoiceSlots:
     """``{{tone|blunt|warm}}`` -- chips, plus custom input that always wins."""
 

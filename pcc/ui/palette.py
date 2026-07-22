@@ -31,9 +31,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import context, placement, spell, store, winapi
+from .. import compose, context, placement, spell, store, winapi
 from ..context import is_magic
-from ..model import Library, Tab, Template, new_id, render
+from ..model import Library, Tab, Template, expand_includes, new_id, render
 from ..usage import UsageStore
 from ..search import search as run_search
 from . import spellcheck
@@ -124,6 +124,9 @@ class PaletteWindow(QWidget):
         self.before_save: Callable[[], None] = lambda: None
 
         self._fill_template: Template | None = None
+        #: Template ids marked with Ctrl+Space, in mark order, for composition.
+        #: Reset on every summon so a stale mark never rides into a new session.
+        self._marked: list[str] = []
         self._build_ui()
         self._wire()
         self._apply_spellcheck()
@@ -276,11 +279,15 @@ class PaletteWindow(QWidget):
             bonus = self.usage.bonus_fn(self._current_app())
             hits = run_search(query, self.library.tabs, bonus=bonus)
             entries = [(hit.tab, hit.template) for hit in hits]
-            self.grid.populate(entries, show_tab_hints=True, keep_id=keep_id)
+            self.grid.populate(
+                entries, show_tab_hints=True, keep_id=keep_id, marked_ids=set(self._marked)
+            )
         else:
             tab = self.tabs.current
             entries = [(tab, t) for t in tab.templates] if tab else []
-            self.grid.populate(entries, show_tab_hints=False, keep_id=keep_id)
+            self.grid.populate(
+                entries, show_tab_hints=False, keep_id=keep_id, marked_ids=set(self._marked)
+            )
 
     def _on_search_changed(self, _text: str) -> None:
         self.refresh_grid()
@@ -410,6 +417,9 @@ class PaletteWindow(QWidget):
             self._target_hwnd = foreground
         mark("capture")
 
+        # A new summon starts with a clean slate -- a mark left over from last
+        # time would silently join the next prompt.
+        self._marked.clear()
         self._go_to_grid(clear_search=True)
         mark("repopulate")
 
@@ -601,7 +611,31 @@ class PaletteWindow(QWidget):
         self.usage.record_use(template.id, self._current_app())
         self._usage_timer.start(5000)
 
+    def _make_lookup(self) -> "Callable[[str], str | None]":
+        """Resolve a ``{{>ref}}`` include to another template's body, by id or title."""
+        def lookup(ref: str) -> str | None:
+            key = ref.strip().lower()
+            for _tab, template in self.library.iter_all():
+                if template.id == ref or template.title.strip().lower() == key:
+                    return template.body
+            return None
+        return lookup
+
+    def _expanded(self, template: Template) -> Template:
+        """``template`` with its ``{{>includes}}`` inlined, keeping id/title/tags.
+
+        Same id, so usage recording and slot recall still key off the real
+        template even after its body has been composed from others.
+        """
+        expanded = expand_includes(template.body, self._make_lookup())
+        if expanded == template.body:
+            return template
+        return Template(
+            title=template.title, body=expanded, id=template.id, tags=list(template.tags)
+        )
+
     def _activate(self, template: Template) -> None:
+        template = self._expanded(template)
         resolve, items, prefill, input_slots = self._resolver_for(template)
         # A template whose only slots are magic ({{clipboard}}, {{date}}...) has
         # nothing to type, so skip the fill panel entirely -- copy, summon, done.
@@ -629,9 +663,56 @@ class PaletteWindow(QWidget):
     def _paste_raw(self) -> None:
         template = self.grid.current
         if template is not None:
+            template = self._expanded(template)
             resolve, _items, _prefill, _inputs = self._resolver_for(template)
             self._record_use(template)
             self.paste_text(render(template.body, resolve=resolve))
+
+    # --- composition (mark with Ctrl+Space, apply on Enter) ------------------
+
+    def _toggle_mark(self) -> None:
+        template = self.grid.current
+        if template is None:
+            return
+        if template.id in self._marked:
+            self._marked.remove(template.id)
+        else:
+            self._marked.append(template.id)
+        self.grid.apply_marks(set(self._marked))
+        count = len(self._marked)
+        self._show_toast(f"{count} MARKED" if count else "CLEARED")
+
+    def _clear_marks(self) -> None:
+        if self._marked:
+            self._marked.clear()
+            self.grid.apply_marks(set())
+
+    def _template_by_id(self, template_id: str) -> Template | None:
+        located = self.library.locate(template_id)
+        return located[0].templates[located[1]] if located else None
+
+    def _activate_selection(self) -> None:
+        """Enter: compose the marked templates if any, else the current one.
+
+        Predictable rule -- **marks are the selection**. If any non-modifier
+        (base) templates are marked, those are the bases and the hovered tile is
+        ignored; otherwise the hovered tile is the base. Marked modifiers always
+        layer on. Choosing anything clears the marks.
+        """
+        if not self._marked:
+            self.grid.activate()
+            return
+        marked = [t for t in (self._template_by_id(i) for i in self._marked) if t is not None]
+        modifiers = [t for t in marked if t.is_modifier]
+        bases = [t for t in marked if not t.is_modifier]
+        if not bases:
+            current = self.grid.current
+            if current is not None and not current.is_modifier:
+                bases = [current]
+        composed = compose.compose(bases, modifiers)
+        self._clear_marks()
+        if composed is not None:
+            self._activate(composed)
 
     # --- pages --------------------------------------------------------------
 
@@ -902,7 +983,13 @@ class PaletteWindow(QWidget):
             if control:
                 self._paste_raw()
             else:
-                self.grid.activate()
+                self._activate_selection()
+            return True
+
+        # Ctrl+Space marks the current tile for composition. Ctrl-, not bare
+        # Space, because the search box owns Space for multi-word queries.
+        if control and key == Qt.Key.Key_Space:
+            self._toggle_mark()
             return True
 
         # Tab reordering must be checked before plain tab switching.

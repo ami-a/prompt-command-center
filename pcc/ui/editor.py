@@ -60,9 +60,9 @@ class EditorPanel(QWidget):
         layout.addWidget(self.tab_combo)
 
         layout.addWidget(self._label(
-            "BODY   —   {{name}} marks a fill-in slot · "
-            "{{name|default}} gives it a default · "
-            "{{name|one|two|three}} offers a choice"
+            "BODY   —   {{name}} fill-in slot · {{name|default}} default · "
+            "{{name|one|two|three}} choice · {{clipboard}} {{selection}} {{app}} "
+            "{{date}} auto-fill · {{>title}} includes another template"
         ))
         self.body_edit = QPlainTextEdit()
         self.body_edit.setObjectName("Field")

@@ -104,6 +104,17 @@ QPushButton#Tab[active="true"] {
     border-left: 3px solid ${ACCENT};
 }
 
+/* Marked for composition (Ctrl+Space): a secondary-coloured left bar so a mark
+   reads as "queued", distinct from the accent that means "current". Both can be
+   true at once -- the selected rule above still sets the rest of the frame. */
+#Tile[marked="true"] {
+    border-left: 3px solid ${SECONDARY};
+}
+
+#Tile[marked="true"] #TileMeta {
+    color: ${ACCENT};
+}
+
 #TileTitle {
     font-size: ${FS_BASE}px;
     font-weight: 600;

@@ -22,6 +22,18 @@ _OPTION_SPLIT_RE = re.compile(r"(?<!\\)\|")
 
 MAX_TITLE_LEN = 120
 
+#: ``{{>name}}`` inlines another template's body. Guarded so a template that
+#: includes itself (directly or in a ring) produces a visible marker instead of
+#: recursing forever -- the same "fail loudly, never hang" stance the store
+#: takes on a corrupt file.
+INCLUDE_PREFIX = ">"
+MAX_INCLUDE_DEPTH = 4
+
+#: Templates carrying this tag are *modifiers*: short fragments ("Be concise.")
+#: meant to be appended to a base prompt rather than used alone. See
+#: :mod:`pcc.compose`.
+MODIFIER_TAG = "modifier"
+
 
 def _split_tail(tail: str | None) -> tuple[str | None, tuple[str, ...]]:
     """Split a placeholder's tail into ``(default, options)``.
@@ -92,7 +104,9 @@ def parse_slots(body: str) -> list[Slot]:
     slots: dict[str, Slot] = {}
     for match in PLACEHOLDER_RE.finditer(body):
         name = match.group(1).strip()
-        if not name:
+        if not name or name.startswith(INCLUDE_PREFIX):
+            # An include is not a fill-in; it contributes its own slots only once
+            # expanded, which render() handles.
             continue
         candidate = Slot(name, *_split_tail(match.group(2)))
         existing = slots.get(name)
@@ -112,16 +126,80 @@ def readable(body: str) -> str:
 
     def substitute(match: re.Match[str]) -> str:
         name = match.group(1).strip()
+        if name.startswith(INCLUDE_PREFIX):
+            # No library to resolve against here; show the referenced name as a
+            # word so the tile reads sensibly.
+            return name[len(INCLUDE_PREFIX):].strip()
         default, _ = _split_tail(match.group(2))
         return default if default else name
 
     return " ".join(PLACEHOLDER_RE.sub(substitute, body).split())
 
 
+def _expand_include(
+    name: str,
+    values: dict[str, str],
+    resolve: "Callable[[str], str | None] | None",
+    lookup: "Callable[[str], str | None] | None",
+    seen: tuple[str, ...],
+) -> str:
+    """Resolve a ``{{>ref}}`` include, or a visible marker if it can't be.
+
+    Every failure is surfaced rather than swallowed: an unknown ref, a cycle, or
+    too-deep nesting each leave a ``{{>marker}}`` in the output so the author can
+    see exactly what went wrong instead of getting silently truncated text.
+    """
+    ref = name[len(INCLUDE_PREFIX):].strip()
+    if not ref or lookup is None:
+        return "{{" + name + "}}"
+    if ref in seen:
+        return "{{>cycle: " + ref + "}}"
+    if len(seen) >= MAX_INCLUDE_DEPTH:
+        return "{{>too deep: " + ref + "}}"
+    included = lookup(ref)
+    if included is None:
+        return "{{>missing: " + ref + "}}"
+    return render(included, values, resolve, lookup, _seen=seen + (ref,))
+
+
+def expand_includes(
+    body: str,
+    lookup: "Callable[[str], str | None] | None",
+    _seen: tuple[str, ...] = (),
+) -> str:
+    """Inline ``{{>ref}}`` includes, leaving every other placeholder untouched.
+
+    A *structural* pass, run before slot parsing: it resolves the composition of
+    templates (which needs the library) while keeping ``{{slot}}`` and magic
+    tokens byte-identical, so the fill panel still sees and collects the slots
+    that live inside an included body. Value rendering happens afterwards.
+    """
+
+    def sub(match: re.Match[str]) -> str:
+        name = match.group(1).strip()
+        if not name.startswith(INCLUDE_PREFIX):
+            return match.group(0)
+        ref = name[len(INCLUDE_PREFIX):].strip()
+        if not ref or lookup is None:
+            return match.group(0)
+        if ref in _seen:
+            return "{{>cycle: " + ref + "}}"
+        if len(_seen) >= MAX_INCLUDE_DEPTH:
+            return "{{>too deep: " + ref + "}}"
+        included = lookup(ref)
+        if included is None:
+            return "{{>missing: " + ref + "}}"
+        return expand_includes(included, lookup, _seen + (ref,))
+
+    return PLACEHOLDER_RE.sub(sub, body)
+
+
 def render(
     body: str,
     values: dict[str, str] | None = None,
     resolve: "Callable[[str], str | None] | None" = None,
+    lookup: "Callable[[str], str | None] | None" = None,
+    _seen: tuple[str, ...] = (),
 ) -> str:
     """Substitute ``values`` into ``body``.
 
@@ -147,6 +225,8 @@ def render(
         name = match.group(1).strip()
         if not name:
             return match.group(0)
+        if name.startswith(INCLUDE_PREFIX):
+            return _expand_include(name, values, resolve, lookup, _seen)
         value = values.get(name, "").strip()
         if value:
             return value
@@ -176,6 +256,11 @@ class Template:
     @property
     def has_slots(self) -> bool:
         return bool(PLACEHOLDER_RE.search(self.body))
+
+    @property
+    def is_modifier(self) -> bool:
+        """A short fragment meant to be appended to a base prompt, not used alone."""
+        return any(tag.lower() == MODIFIER_TAG for tag in self.tags)
 
     def preview(self) -> str:
         """Body as readable prose for the tile subtitle.

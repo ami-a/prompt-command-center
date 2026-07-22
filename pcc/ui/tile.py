@@ -104,6 +104,7 @@ class Tile(QFrame):
         super().__init__()
         self.setObjectName("Tile")
         self.setProperty("selected", False)
+        self.setProperty("marked", False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.template: Template | None = None
 
@@ -132,26 +133,41 @@ class Tile(QFrame):
         layout.addWidget(self.tab_hint)
         layout.addStretch(1)
 
-    def bind(self, template: Template, tab_hint: str = "") -> None:
+    def bind(self, template: Template, tab_hint: str = "", marked: bool = False) -> None:
         self.template = template
         self.title.set_full_text(template.title)
         self.body.set_full_text(template.preview())
 
+        # A modifier advertises itself so its tile reads as "a fragment to layer
+        # on", not a prompt to run alone. Slot count still shows when present.
+        parts = []
+        if template.is_modifier:
+            parts.append("MOD")
         slot_count = len(template.slots)
-        self.meta.setText(f"{slot_count}⬚" if slot_count else "")
+        if slot_count:
+            parts.append(f"{slot_count}⬚")
+        self.meta.setText("  ".join(parts))
+
+        self._set_property("marked", marked)
 
         # The owning tab is only worth showing when results span tabs.
         self.tab_hint.setText(tab_hint.upper())
         self.tab_hint.setVisible(bool(tab_hint))
 
-    def set_selected(self, selected: bool) -> None:
-        if self.property("selected") == selected:
+    def _set_property(self, name: str, value: bool) -> None:
+        if self.property(name) == value:
             return
-        self.setProperty("selected", selected)
-        # Dynamic properties do not restyle on their own; only two tiles change
-        # per keystroke so this stays cheap.
+        self.setProperty(name, value)
+        # Dynamic properties do not restyle on their own; only a couple of tiles
+        # change per keystroke so this stays cheap.
         self.style().unpolish(self)
         self.style().polish(self)
+
+    def set_selected(self, selected: bool) -> None:
+        self._set_property("selected", selected)
+
+    def set_marked(self, marked: bool) -> None:
+        self._set_property("marked", marked)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         if event.button() == Qt.MouseButton.LeftButton:
