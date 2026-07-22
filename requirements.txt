@@ -1,0 +1,9 @@
+# PySide6-Essentials, not PySide6: the full package pulls PySide6-Addons
+# (~169 MB of WebEngine, 3D, Charts, Multimedia) that this app never imports.
+PySide6-Essentials==6.11.1
+pywin32==312
+rapidfuzz==3.14.5
+watchdog==6.0.0
+
+# Development only.
+pytest==9.1.1

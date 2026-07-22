@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Spike harness output (screenshots, logs, captured paste text).
+spike/*.png
+spike/*.log
+spike/*.err
+spike/received.txt
+spike/result.txt
+spike/verify.err

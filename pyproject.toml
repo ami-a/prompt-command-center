@@ -1,0 +1,12 @@
+[project]
+name = "pcc"
+version = "1.0.0"
+description = "Prompt Command Center — a keyboard-first prompt template palette for Windows"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# QT_QPA_PLATFORM=offscreen is set in tests/conftest.py at import time, which
+# needs no plugin and applies however pytest is invoked. Qt widget tests
+# therefore run on a locked or headless machine.

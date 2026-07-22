@@ -1,0 +1,384 @@
+﻿/* PCC - dark theme, fully tokenised.
+ *
+ * This file is a string.Template and contains no literal colours or sizes.
+ * ui/theme.py resolves it against settings.json:
+ *
+ *   FONT_FAMILY, BODY_FONT_FAMILY, FS_*   typography  (theme.font_metrics)
+ *   BG, PANEL, TILE, ACCENT, TEXT, ...    colour      (schemes.colour_tokens)
+ *
+ * Colour tokens are derived from a scheme's three source colours, so adding a
+ * scheme never means editing this file. A literal dollar sign, if ever needed,
+ * must be doubled - even prose in this header is substituted, which is why
+ * placeholder names are written bare here rather than with their sigil.
+ *
+ * Two rules keep this fast:
+ *   1. No QGraphicsDropShadowEffect on repeated widgets. Tile emphasis comes
+ *      from borders and background tints; only the outer card gets a shadow.
+ *   2. Selection state is a dynamic property (`selected`), so moving the
+ *      cursor restyles two tiles rather than relaying out the grid.
+ */
+
+* {
+    font-family: $FONT_FAMILY;
+    color: ${TEXT};
+}
+
+/* --- outer card ---------------------------------------------------------- */
+
+#Card {
+    background-color: ${BG};
+    border: 1px solid ${BORDER};
+    border-radius: 12px;
+}
+
+/* --- header -------------------------------------------------------------- */
+
+#Brand {
+    color: ${ACCENT};
+    font-size: ${FS_SMALL}px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    padding: 0 2px;
+}
+
+#Search {
+    background-color: ${PANEL};
+    border: 1px solid ${BORDER};
+    border-radius: 8px;
+    padding: 7px 11px;
+    font-size: ${FS_BASE}px;
+    selection-background-color: ${ACCENT_DEEP};
+    selection-color: ${ON_ACCENT};
+}
+
+#Search:focus {
+    border: 1px solid ${ACCENT};
+    background-color: ${PANEL_FOCUS};
+}
+
+/* --- tab strip ----------------------------------------------------------- */
+
+#TabStrip {
+    background: transparent;
+}
+
+QPushButton#Tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: ${MUTED};
+    padding: 6px 12px 5px 12px;
+    font-size: ${FS_SMALL}px;
+    font-weight: 600;
+}
+
+QPushButton#Tab:hover {
+    color: ${TEXT};
+}
+
+QPushButton#Tab[active="true"] {
+    color: ${ACCENT};
+    border-bottom: 2px solid ${ACCENT};
+}
+
+/* --- tiles --------------------------------------------------------------- */
+
+#Tile {
+    background-color: ${TILE};
+    border: 1px solid ${BORDER};
+    border-left: 3px solid ${BORDER};
+    border-radius: 9px;
+}
+
+#Tile:hover {
+    background-color: ${TILE_HOVER};
+}
+
+#Tile[selected="true"] {
+    background-color: ${TILE_SELECTED};
+    border: 1px solid ${ACCENT};
+    border-left: 3px solid ${ACCENT};
+}
+
+#TileTitle {
+    font-size: ${FS_BASE}px;
+    font-weight: 600;
+    color: ${TEXT};
+}
+
+#Tile[selected="true"] #TileTitle {
+    color: ${ACCENT_SOFT};
+}
+
+#TileBody {
+    font-family: $BODY_FONT_FAMILY;
+    font-size: ${FS_BODY}px;
+    color: ${MUTED};
+}
+
+#TileMeta {
+    font-size: ${FS_TINY}px;
+    font-weight: 700;
+    color: ${SECONDARY};
+    letter-spacing: 1px;
+}
+
+#TileTab {
+    font-size: ${FS_TINY}px;
+    font-weight: 700;
+    color: ${FAINT};
+    letter-spacing: 1px;
+}
+
+/* --- empty state --------------------------------------------------------- */
+
+#Empty {
+    color: ${FAINT};
+    font-size: ${FS_SMALL}px;
+}
+
+/* --- fill + editor panels ------------------------------------------------ */
+
+#PanelTitle {
+    font-size: ${FS_TITLE}px;
+    font-weight: 700;
+    color: ${ACCENT};
+}
+
+#FieldLabel {
+    font-size: ${FS_BODY}px;
+    font-weight: 700;
+    color: ${MUTED};
+    letter-spacing: 1px;
+}
+
+QLineEdit#Field, QPlainTextEdit#Field {
+    background-color: ${PANEL};
+    border: 1px solid ${BORDER};
+    border-radius: 7px;
+    padding: 6px 9px;
+    font-size: ${FS_SMALL}px;
+    selection-background-color: ${ACCENT_DEEP};
+    selection-color: ${ON_ACCENT};
+}
+
+QLineEdit#Field:focus, QPlainTextEdit#Field:focus {
+    border: 1px solid ${ACCENT};
+    background-color: ${PANEL_FOCUS};
+}
+
+#Preview {
+    background-color: ${PREVIEW_BG};
+    border: 1px dashed ${BORDER};
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-family: $BODY_FONT_FAMILY;
+    font-size: ${FS_BODY}px;
+    color: ${MUTED};
+}
+
+#PreviewLabel {
+    font-size: ${FS_TINY}px;
+    font-weight: 700;
+    color: ${FAINT};
+    letter-spacing: 1px;
+}
+
+/* --- settings rows ------------------------------------------------------- */
+
+#SettingRow {
+    background-color: ${TILE};
+    border: 1px solid transparent;
+    border-left: 3px solid transparent;
+    border-radius: 8px;
+}
+
+#SettingRow:hover {
+    background-color: ${TILE_HOVER};
+}
+
+#SettingRow[selected="true"] {
+    background-color: ${TILE_SELECTED};
+    border: 1px solid ${ACCENT};
+    border-left: 3px solid ${ACCENT};
+}
+
+#SettingLabel {
+    font-size: ${FS_SMALL}px;
+    font-weight: 600;
+    color: ${TEXT};
+}
+
+#SettingRow[selected="true"] #SettingLabel {
+    color: ${ACCENT_SOFT};
+}
+
+#SettingHint {
+    font-size: ${FS_TINY}px;
+    color: ${FAINT};
+}
+
+/* The value carries the accent only on the selected row, so the eye lands on
+   the one thing Left/Right will change. */
+#SettingValue {
+    font-size: ${FS_SMALL}px;
+    font-weight: 700;
+    color: ${MUTED};
+}
+
+#SettingRow[selected="true"] #SettingValue {
+    color: ${ACCENT};
+}
+
+/* --- footer hint bar ----------------------------------------------------- */
+
+#Hints {
+    font-size: ${FS_TINY}px;
+    color: ${FAINT};
+    letter-spacing: 0.5px;
+}
+
+#Hints b {
+    color: ${ACCENT};
+    font-weight: 700;
+}
+
+#Toast {
+    font-size: ${FS_TINY}px;
+    font-weight: 700;
+    color: ${SECONDARY};
+    letter-spacing: 1px;
+}
+
+/* --- scrollbars ---------------------------------------------------------- */
+
+QScrollArea, #GridHost {
+    background: transparent;
+    border: none;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background: ${SCROLL};
+    border-radius: 4px;
+    min-height: 28px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: ${BORDER_HOVER};
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    height: 0;
+    background: transparent;
+}
+
+/* --- dialogs (new tab, rename, confirm delete) --------------------------- */
+
+QDialog, QMessageBox, QInputDialog {
+    background-color: ${BG};
+    border: 1px solid ${BORDER};
+}
+
+QDialog QLabel, QMessageBox QLabel {
+    font-size: ${FS_SMALL}px;
+    color: ${TEXT};
+}
+
+QDialog QLineEdit, QInputDialog QLineEdit {
+    background-color: ${PANEL};
+    border: 1px solid ${ACCENT};
+    border-radius: 7px;
+    padding: 6px 9px;
+    font-size: ${FS_SMALL}px;
+    min-width: 260px;
+    selection-background-color: ${ACCENT_DEEP};
+    selection-color: ${ON_ACCENT};
+}
+
+QPushButton {
+    background-color: ${TILE};
+    border: 1px solid ${BORDER};
+    border-radius: 7px;
+    padding: 6px 16px;
+    font-size: ${FS_SMALL}px;
+    font-weight: 600;
+    color: ${TEXT};
+    min-width: 68px;
+}
+
+QPushButton:hover {
+    background-color: ${TILE_HOVER};
+    border: 1px solid ${BORDER_HOVER};
+}
+
+QPushButton:default, QPushButton:focus {
+    border: 1px solid ${ACCENT};
+    color: ${ACCENT_SOFT};
+}
+
+QPushButton:pressed {
+    background-color: ${TILE_SELECTED};
+}
+
+/* --- combo box (tab picker in the editor) -------------------------------- */
+
+QComboBox#Field {
+    background-color: ${PANEL};
+    border: 1px solid ${BORDER};
+    border-radius: 7px;
+    padding: 6px 9px;
+    font-size: ${FS_SMALL}px;
+}
+
+QComboBox#Field:focus {
+    border: 1px solid ${ACCENT};
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 22px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: ${PANEL};
+    border: 1px solid ${ACCENT};
+    border-radius: 7px;
+    padding: 4px;
+    outline: none;
+    selection-background-color: ${TILE_SELECTED};
+    selection-color: ${ACCENT};
+}
+
+/* --- menus (tray) -------------------------------------------------------- */
+
+QMenu {
+    background-color: ${PANEL};
+    border: 1px solid ${BORDER};
+    border-radius: 8px;
+    padding: 5px;
+}
+
+QMenu::item {
+    padding: 6px 22px 6px 14px;
+    border-radius: 5px;
+    font-size: ${FS_SMALL}px;
+}
+
+QMenu::item:selected {
+    background-color: ${TILE_SELECTED};
+    color: ${ACCENT};
+}
+
+QMenu::separator {
+    height: 1px;
+    background: ${BORDER};
+    margin: 4px 8px;
+}
+

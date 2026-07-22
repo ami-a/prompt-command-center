@@ -1,0 +1,319 @@
+"""Win32 glue: foreground capture/restore, clipboard, and synthetic paste.
+
+This is the highest-risk part of PCC. The contract is:
+
+* :func:`get_foreground_window` is called **before** our window is shown, while
+  the user's target app still owns the foreground.
+* :func:`restore_focus` hands the foreground back using the ``AttachThreadInput``
+  sandwich, which is the only recipe Windows honours consistently.
+* :func:`send_paste` synthesises the paste chord via ``SendInput``.
+
+Everything degrades gracefully: no function here raises on Win32 failure, they
+return ``False`` so the UI can stay alive.
+"""
+
+from __future__ import annotations
+
+import ctypes
+import time
+from ctypes import wintypes
+
+user32 = ctypes.WinDLL("user32", use_last_error=True)
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+# --- SendInput plumbing -----------------------------------------------------
+
+INPUT_KEYBOARD = 1
+KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
+MAPVK_VK_TO_VSC = 0
+
+VK_CONTROL = 0x11
+VK_SHIFT = 0x10
+VK_MENU = 0x12          # Alt
+VK_LWIN = 0x5B
+VK_RWIN = 0x5C
+VK_V = 0x56
+VK_INSERT = 0x2D
+
+SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001
+SPIF_SENDCHANGE = 0x02
+
+
+# ULONG_PTR: 8 bytes on x64, 4 on x86. Getting this wrong silently changes
+# sizeof(INPUT), and SendInput rejects any cbSize that is not an exact match --
+# it returns 0 with no error rather than doing something visibly wrong.
+ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", wintypes.WORD),
+        ("wScan", wintypes.WORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ULONG_PTR),
+    ]
+
+
+class MOUSEINPUT(ctypes.Structure):
+    """Unused, but it is the largest union member and therefore sets its size."""
+
+    _fields_ = [
+        ("dx", wintypes.LONG),
+        ("dy", wintypes.LONG),
+        ("mouseData", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ULONG_PTR),
+    ]
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [
+        ("uMsg", wintypes.DWORD),
+        ("wParamL", wintypes.WORD),
+        ("wParamH", wintypes.WORD),
+    ]
+
+
+class _INPUTUNION(ctypes.Union):
+    _fields_ = [("mi", MOUSEINPUT), ("ki", KEYBDINPUT), ("hi", HARDWAREINPUT)]
+
+
+class INPUT(ctypes.Structure):
+    _anonymous_ = ("u",)
+    _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
+
+
+assert ctypes.sizeof(INPUT) == (40 if ctypes.sizeof(ctypes.c_void_p) == 8 else 28), (
+    f"unexpected sizeof(INPUT)={ctypes.sizeof(INPUT)}; SendInput would silently fail"
+)
+
+
+user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int)
+user32.SendInput.restype = wintypes.UINT
+user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+
+
+def _key_event(vk: int, key_up: bool) -> INPUT:
+    """Build a keystroke carrying both the virtual key and its scan code.
+
+    Supplying ``wScan`` alongside ``wVk`` keeps apps happy that read either one
+    (Electron and terminal emulators are the usual offenders) without making the
+    keystroke layout-dependent.
+    """
+    scan = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
+    flags = KEYEVENTF_KEYUP if key_up else 0
+    event = INPUT(type=INPUT_KEYBOARD)
+    event.ki = KEYBDINPUT(wVk=vk, wScan=scan, dwFlags=flags, time=0, dwExtraInfo=0)
+    return event
+
+
+def _send(inputs: list[INPUT]) -> bool:
+    if not inputs:
+        return True
+    array = (INPUT * len(inputs))(*inputs)
+    sent = user32.SendInput(len(inputs), array, ctypes.sizeof(INPUT))
+    return sent == len(inputs)
+
+
+def _release_stray_modifiers() -> None:
+    """Drop Shift/Alt/Win if they are physically down.
+
+    The palette is opened from a chord, so a modifier can still be held when the
+    user hits Enter. A stray Shift turns Ctrl+V into Ctrl+Shift+V (paste-as-
+    plain-text in some apps, nothing at all in others). Ctrl is left alone -- we
+    are about to press it anyway.
+    """
+    stray = [vk for vk in (VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN)
+             if user32.GetAsyncKeyState(vk) & 0x8000]
+    if stray:
+        _send([_key_event(vk, key_up=True) for vk in stray])
+
+
+# --- Foreground window ------------------------------------------------------
+
+
+def get_foreground_window() -> int:
+    return int(user32.GetForegroundWindow() or 0)
+
+
+def is_window(hwnd: int) -> bool:
+    return bool(hwnd) and bool(user32.IsWindow(wintypes.HWND(hwnd)))
+
+
+def relax_foreground_lock() -> None:
+    """Ask Windows to stop rate-limiting foreground changes.
+
+    Without this, ``SetForegroundWindow`` can be downgraded to a taskbar flash
+    when the user has been typing in another app.
+    """
+    try:
+        user32.SystemParametersInfoW(
+            SPI_SETFOREGROUNDLOCKTIMEOUT, 0, ctypes.c_void_p(0), SPIF_SENDCHANGE
+        )
+    except Exception:
+        pass
+
+
+def _activate_attached(hwnd: int, borrow_tid: int) -> bool:
+    """Activate ``hwnd`` while sharing input state with thread ``borrow_tid``.
+
+    Windows only honours ``SetForegroundWindow`` from the process that already
+    owns the foreground. Attaching our input queue to a thread that does own it
+    makes the call legitimate; without this the request is silently downgraded
+    to a taskbar flash.
+    """
+    target = wintypes.HWND(hwnd)
+    our_tid = kernel32.GetCurrentThreadId()
+
+    attached = False
+    if borrow_tid and borrow_tid != our_tid:
+        attached = bool(user32.AttachThreadInput(our_tid, borrow_tid, True))
+    try:
+        user32.SetForegroundWindow(target)
+        user32.BringWindowToTop(target)
+        user32.SetActiveWindow(target)
+        user32.SetFocus(target)
+    finally:
+        if attached:
+            user32.AttachThreadInput(our_tid, borrow_tid, False)
+
+    return int(user32.GetForegroundWindow() or 0) == hwnd
+
+
+def restore_focus(hwnd: int) -> bool:
+    """Give the foreground back to ``hwnd`` after the palette is done.
+
+    Here we are the outgoing foreground process, so we borrow the *target's*
+    thread and hand off.
+    """
+    if not is_window(hwnd):
+        return False
+    target_tid = user32.GetWindowThreadProcessId(wintypes.HWND(hwnd), None)
+    if not target_tid:
+        return False
+    return _activate_attached(hwnd, target_tid)
+
+
+def force_foreground(hwnd: int) -> bool:
+    """Take the foreground for our own ``hwnd`` when we are *not* foreground.
+
+    This is the harder direction and the one Qt's ``activateWindow()`` cannot
+    do: the palette is summoned by AutoHotkey while some other app is focused,
+    so we borrow the thread of whatever currently holds the foreground in order
+    to be allowed to take it. Without this the palette paints on top but never
+    receives a keystroke.
+    """
+    if not is_window(hwnd):
+        return False
+    current = int(user32.GetForegroundWindow() or 0)
+    if current == hwnd:
+        return True
+    borrow_tid = (
+        user32.GetWindowThreadProcessId(wintypes.HWND(current), None) if current else 0
+    )
+    return _activate_attached(hwnd, borrow_tid)
+
+
+# --- Clipboard --------------------------------------------------------------
+
+CF_UNICODETEXT = 13
+
+
+def _with_clipboard(fn, attempts: int = 8):
+    """Run ``fn`` with the clipboard open, retrying while another app holds it."""
+    import win32clipboard
+
+    for attempt in range(attempts):
+        try:
+            win32clipboard.OpenClipboard()
+        except Exception:
+            time.sleep(0.01 * (attempt + 1))
+            continue
+        try:
+            return fn(win32clipboard)
+        finally:
+            try:
+                win32clipboard.CloseClipboard()
+            except Exception:
+                pass
+    return None
+
+
+def clipboard_get_text() -> str | None:
+    """Current clipboard text, or ``None`` if it holds something else / nothing.
+
+    ``None`` deliberately means "do not restore": clobbering a copied image with
+    an empty string would be worse than leaving our prompt on the clipboard.
+    """
+
+    def read(clip):
+        if not clip.IsClipboardFormatAvailable(CF_UNICODETEXT):
+            return None
+        try:
+            return clip.GetClipboardData(CF_UNICODETEXT)
+        except Exception:
+            return None
+
+    return _with_clipboard(read)
+
+
+def clipboard_set_text(text: str) -> bool:
+    def write(clip):
+        clip.EmptyClipboard()
+        clip.SetClipboardData(CF_UNICODETEXT, text)
+        return True
+
+    return bool(_with_clipboard(write))
+
+
+# --- Paste ------------------------------------------------------------------
+
+
+def send_paste(chord: str = "ctrl+v") -> bool:
+    """Synthesise the paste chord into whatever currently has focus."""
+    _release_stray_modifiers()
+
+    if chord == "shift+insert":
+        modifier, key = VK_SHIFT, VK_INSERT
+    else:
+        modifier, key = VK_CONTROL, VK_V
+
+    return _send([
+        _key_event(modifier, key_up=False),
+        _key_event(key, key_up=False),
+        _key_event(key, key_up=True),
+        _key_event(modifier, key_up=True),
+    ])
+
+
+def send_unicode_text(text: str) -> bool:
+    """Type ``text`` directly as Unicode keystrokes.
+
+    Fallback for the rare app that ignores the clipboard. Not the default: it is
+    O(n) in the length of the prompt and far slower for multi-line templates.
+    """
+    inputs: list[INPUT] = []
+    for char in text:
+        for key_up in (False, True):
+            event = INPUT(type=INPUT_KEYBOARD)
+            event.ki = KEYBDINPUT(
+                wVk=0,
+                wScan=ord(char),
+                dwFlags=KEYEVENTF_UNICODE | (KEYEVENTF_KEYUP if key_up else 0),
+                time=0,
+                dwExtraInfo=0,
+            )
+            inputs.append(event)
+    return _send(inputs)
+
+
+def is_elevated() -> bool:
+    """Whether we run elevated -- determines if we can paste into admin windows."""
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False

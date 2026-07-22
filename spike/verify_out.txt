@@ -1,0 +1,31 @@
+﻿
+PCC end-to-end verification
+----------------------------------------------------
+  PASS  IPC host window exists (AHK can find it)
+
+Trigger and focus
+  PASS  palette is visible after trigger
+  PASS  palette holds keyboard focus
+  PASS  palette placed on-screen
+
+Search, fill panel, paste
+  PASS  paste landed in the target window
+  PASS  typed slot value was used
+  PASS  unfilled slot fell back to its default
+  PASS  no raw tokens leaked for slots with defaults
+  PASS  literal token kept for slot without a default
+  PASS  palette hid itself after pasting
+
+Esc dismisses without pasting
+  PASS  palette hidden by Esc
+  PASS  Esc pasted nothing
+
+Performance
+  show latency: 39.1, 16.2 ms
+  PASS  first trigger under 60 ms
+  PASS  subsequent triggers under 20 ms
+  resident memory: 127.5 MB
+  PASS  resident memory under 150 MB
+  PASS  no exceptions logged
+----------------------------------------------------
+  16 passed, 0 failed
