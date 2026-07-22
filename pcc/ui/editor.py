@@ -10,7 +10,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
-    QLineEdit,
     QPlainTextEdit,
     QSizePolicy,
     QVBoxLayout,
@@ -18,6 +17,8 @@ from PySide6.QtWidgets import (
 )
 
 from ..model import Tab, Template
+from . import spellcheck
+from .textedit import GrowingTextEdit
 
 
 class EditorPanel(QWidget):
@@ -44,8 +45,13 @@ class EditorPanel(QWidget):
         layout.addWidget(self.heading)
 
         layout.addWidget(self._label("TITLE"))
-        self.title_edit = QLineEdit()
-        self.title_edit.setObjectName("Field")
+        # A GrowingTextEdit rather than a QLineEdit purely so the title can be
+        # spell-checked: a line edit has no QTextDocument to hang a highlighter
+        # on. It is pinned to one line and does not wrap, so it still behaves
+        # exactly like the line edit it replaces -- and the stylesheet already
+        # dresses QPlainTextEdit#Field identically.
+        self.title_edit = GrowingTextEdit(max_visible_lines=1, wrap=False)
+        spellcheck.attach(self.title_edit)
         layout.addWidget(self.title_edit)
 
         layout.addWidget(self._label("TAB"))
@@ -61,6 +67,7 @@ class EditorPanel(QWidget):
         self.body_edit = QPlainTextEdit()
         self.body_edit.setObjectName("Field")
         self.body_edit.setTabChangesFocus(True)
+        spellcheck.attach(self.body_edit)
         layout.addWidget(self.body_edit, 1)
 
     @staticmethod
@@ -77,7 +84,7 @@ class EditorPanel(QWidget):
         self.template = template or Template(title="", body="")
         self.heading.setText("NEW TEMPLATE" if self._is_new else "EDIT TEMPLATE")
 
-        self.title_edit.setText(self.template.title)
+        self.title_edit.setPlainText(self.template.title)
         self.body_edit.setPlainText(self.template.body)
 
         self.tab_combo.clear()
@@ -91,7 +98,9 @@ class EditorPanel(QWidget):
         self.title_edit.selectAll()
 
     def _commit(self) -> None:
-        title = self.title_edit.text().strip()
+        # Collapsed, not just stripped: the field cannot produce a newline by
+        # keyboard, but a paste can, and a title is one line by definition.
+        title = " ".join(self.title_edit.toPlainText().split())
         body = self.body_edit.toPlainText()
         if not title and not body.strip():
             self.cancelled.emit()
@@ -113,6 +122,13 @@ class EditorPanel(QWidget):
         ):
             self._commit()
             return True
+
+        # Ctrl+. is the quick-fix binding people already have in their fingers.
+        if key == Qt.Key.Key_Period and control:
+            focused = self.focusWidget()
+            return focused in (self.title_edit, self.body_edit) and (
+                spellcheck.open_suggestions(focused)
+            )
 
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and self.title_edit.hasFocus():
             self.body_edit.setFocus()

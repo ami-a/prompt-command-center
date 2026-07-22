@@ -14,6 +14,7 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QWidget
 
 from pcc.model import Tab, Template
+from pcc.ui.palette import PAGE_EDITOR
 
 pytestmark = pytest.mark.usefixtures("qapp")
 
@@ -559,6 +560,57 @@ class TestPaste:
         palette.show()
         palette.paste_text("text")
         assert palette.isVisible(), "a failed copy must not silently swallow the paste"
+
+
+class TestShutDown:
+    """Ctrl+Q quits the process, rather than hiding the window."""
+
+    def _asked(self, palette):
+        calls: list[bool] = []
+        palette.quit_requested.connect(lambda: calls.append(True))
+        return calls
+
+    def test_ctrl_q_requests_the_quit(self, palette):
+        calls = self._asked(palette)
+        assert press(palette, Qt.Key.Key_Q, Qt.KeyboardModifier.ControlModifier)
+        assert calls == [True]
+
+    def test_it_hides_and_hands_focus_back_first(self, palette, monkeypatch):
+        restored: list[int] = []
+        monkeypatch.setattr("pcc.winapi.restore_focus", lambda hwnd: restored.append(hwnd) or True)
+        palette.show()
+        palette.shut_down()
+        assert not palette.isVisible()
+        assert restored, "the foreground must not be left orphaned"
+
+    def test_bare_q_is_left_to_the_search_box(self, palette):
+        calls = self._asked(palette)
+        assert not press(palette, Qt.Key.Key_Q, text="q")
+        assert calls == []
+
+    def test_it_cannot_fire_while_a_template_is_being_edited(self, palette):
+        """The editor gets first refusal on every key, so Ctrl+Q never reaches
+        the grid handler and cannot discard half-written work."""
+        calls = self._asked(palette)
+        # eventFilter ignores everything while hidden, so a hidden palette would
+        # pass this test without routing anything.
+        palette.show()
+        palette._edit_template()
+        assert palette.stack.currentIndex() == PAGE_EDITOR
+
+        event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Q,
+                          Qt.KeyboardModifier.ControlModifier, "")
+        assert not palette.eventFilter(palette.editor.body_edit, event)
+        assert calls == []
+
+    def test_the_same_key_does_quit_from_the_grid_page(self, palette):
+        """The counterpart: proof the routing above is what stopped it."""
+        calls = self._asked(palette)
+        palette.show()
+        event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Q,
+                          Qt.KeyboardModifier.ControlModifier, "")
+        assert palette.eventFilter(palette.search, event)
+        assert calls == [True]
 
 
 

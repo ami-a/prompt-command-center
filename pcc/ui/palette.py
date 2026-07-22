@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
 
@@ -30,9 +31,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import placement, store, winapi
+from .. import placement, spell, store, winapi
 from ..model import Library, Tab, Template, new_id, render
 from ..search import search as run_search
+from . import spellcheck
 from .editor import EditorPanel
 from .fill import FillPanel
 from .grid import TileGrid
@@ -46,13 +48,17 @@ PAGE_GRID, PAGE_FILL, PAGE_EDITOR, PAGE_SETTINGS = 0, 1, 2, 3
 HINTS = {
     PAGE_GRID: (
         "<b>↑↓←→</b> move · <b>type</b> filter · <b>⏎</b> paste · <b>^⏎</b> paste raw · "
-        "<b>⇥</b> tab · <b>⌥1-9</b> jump · <b>^N</b> new · <b>F2</b> edit · <b>Esc</b> hide"
+        "<b>⇥</b> tab · <b>⌥1-9</b> jump · <b>^N</b> new · <b>F2</b> edit · "
+        "<b>Esc</b> hide · <b>^Q</b> quit"
     ),
     PAGE_FILL: (
         "<b>⇥/⇧⇥</b> next slot · <b>←→</b> option · <b>type</b> your own · "
-        "<b>⇧⏎</b> newline · <b>⏎</b> paste · <b>Esc</b> back"
+        "<b>⇧⏎</b> newline · <b>^.</b> spelling · <b>⏎</b> paste · <b>Esc</b> back"
     ),
-    PAGE_EDITOR: "<b>⇥</b> next field · <b>^S</b> save · <b>Esc</b> cancel",
+    PAGE_EDITOR: (
+        "<b>⇥</b> next field · <b>^S</b> save · <b>^.</b> fix spelling · "
+        "<b>Esc</b> cancel"
+    ),
     PAGE_SETTINGS: (
         "<b>↑↓</b> setting · <b>←→</b> change · <b>PgUp/PgDn</b> ×5 · "
         "<b>⏎</b> save · <b>Esc</b> revert"
@@ -111,6 +117,7 @@ class PaletteWindow(QWidget):
 
         self._build_ui()
         self._wire()
+        self._apply_spellcheck()
         self.refresh_tabs()
         self._resize_for(QApplication.primaryScreen())
 
@@ -206,6 +213,21 @@ class PaletteWindow(QWidget):
         colour.setAlpha(self.SHADOW_ALPHA)
         self._shadow.setColor(colour)
 
+    def _apply_spellcheck(self) -> None:
+        """Push the spelling settings into the checker and the marks.
+
+        The squiggle wears SPELL -- the scheme's secondary colour pushed
+        brighter, pink on Cyber, lime on Matrix -- so it stays inside the rule
+        that every colour in the app derives from a scheme's three source
+        colours, and reads as "not the accent" in all seven. Both setters no-op
+        when nothing changed, which is what makes this safe to call on every
+        keystroke of the live preview.
+        """
+        tokens = colour_tokens(self.settings.get("scheme"), self.settings.get("accent"))
+        spell.set_language(self.settings.get("spellcheck_language"))
+        spellcheck.set_colour(tokens["SPELL"])
+        spellcheck.set_enabled(bool(self.settings.get("spellcheck", True)))
+
     def _resize_for(self, screen) -> None:
         width, height = placement.fit_size(
             screen,
@@ -266,6 +288,7 @@ class PaletteWindow(QWidget):
         if app is not None:
             app.setStyleSheet(build_stylesheet(self.settings))
         self._apply_shadow_colour()
+        self._apply_spellcheck()
         self.grid.set_columns(int(self.settings.get("columns", 3)))
         # Re-binding forces the clamped labels to recompute their line heights
         # against the new font metrics.
@@ -297,6 +320,7 @@ class PaletteWindow(QWidget):
         if app is not None:
             app.setStyleSheet(build_stylesheet(self.settings))
         self._apply_shadow_colour()
+        self._apply_spellcheck()
         self.grid.set_columns(int(self.settings.get("columns", 3)))
         current = self.grid.current
         self.refresh_grid(keep_id=current.id if current else None)
@@ -413,6 +437,14 @@ class PaletteWindow(QWidget):
             self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
             self._suppress_deactivate = False
 
+        # Same bargain, for the spell checker: building the COM object costs
+        # ~70 ms once. Paid here it is free; paid on the first Ctrl+N it would
+        # be a visible stutter on the way into the editor.
+        try:
+            spell.warm()
+        except Exception:
+            pass
+
     def toggle(self) -> None:
         if self.isVisible():
             self.dismiss()
@@ -426,6 +458,20 @@ class PaletteWindow(QWidget):
         if restore_focus:
             winapi.restore_focus(self._target_hwnd)
         self._suppress_deactivate = False
+
+    def shut_down(self) -> None:
+        """Quit PCC entirely, not just hide it.
+
+        Focus goes back to the window you came from first: the palette is about
+        to vanish along with the process, and an orphaned foreground leaves the
+        caret nowhere.
+
+        It does not ask. AHK relaunches PCC on the next CapsLock+Space -- so the
+        worst an accidental Ctrl+Q costs is the ~1 s cold start on the next
+        trigger -- and the tray's own *Quit PCC* has never asked either.
+        """
+        self.dismiss(restore_focus=True)
+        self.quit_requested.emit()
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         # The key filter is application-wide, so it is attached only while the
@@ -683,19 +729,29 @@ class PaletteWindow(QWidget):
 
     # --- modal helpers ------------------------------------------------------
 
-    def _prompt(self, title: str, label: str, initial: str = "") -> str | None:
-        """Modal text prompt that does not trip the auto-hide-on-deactivate rule."""
+    @contextmanager
+    def modal_guard(self):
+        """Run something that takes focus without the palette hiding itself.
+
+        Public because the spelling menu needs it too, and it finds it by name
+        on :meth:`QWidget.window` -- which keeps ``ui.spellcheck`` free of any
+        import back into this module.
+        """
         self._suppress_deactivate = True
         try:
-            text, ok = QInputDialog.getText(self, title, label, QLineEdit.EchoMode.Normal, initial)
+            yield
         finally:
             self._suppress_deactivate = False
             self.activateWindow()
+
+    def _prompt(self, title: str, label: str, initial: str = "") -> str | None:
+        """Modal text prompt that does not trip the auto-hide-on-deactivate rule."""
+        with self.modal_guard():
+            text, ok = QInputDialog.getText(self, title, label, QLineEdit.EchoMode.Normal, initial)
         return text.strip() if ok and text.strip() else None
 
     def _confirm(self, question: str) -> bool:
-        self._suppress_deactivate = True
-        try:
+        with self.modal_guard():
             answer = QMessageBox.question(
                 self,
                 "PCC",
@@ -703,9 +759,6 @@ class PaletteWindow(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
-        finally:
-            self._suppress_deactivate = False
-            self.activateWindow()
         return answer == QMessageBox.StandardButton.Yes
 
     # --- keyboard -----------------------------------------------------------
@@ -826,6 +879,12 @@ class PaletteWindow(QWidget):
             return True
         if control and key == Qt.Key.Key_R:
             self.reload_settings() if shift else self.reload_library()
+            return True
+        # Only reachable from the grid page -- the editor, fill and settings
+        # pages get first refusal on every key, so Ctrl+Q can never discard a
+        # template you are halfway through writing.
+        if control and key == Qt.Key.Key_Q:
+            self.shut_down()
             return True
 
         return False

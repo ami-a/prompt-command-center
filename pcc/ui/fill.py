@@ -13,7 +13,6 @@ from __future__ import annotations
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QLabel,
-    QPlainTextEdit,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -21,42 +20,23 @@ from PySide6.QtWidgets import (
 )
 
 from ..model import Slot, Template, render
+from . import spellcheck
 from .flow import FlowLayout
+from .textedit import GrowingTextEdit
 
 
-class SlotEdit(QPlainTextEdit):
-    """One-line-by-default input that grows with its content.
-
-    ``QPlainTextEdit`` rather than ``QLineEdit`` because slots such as
-    ``{{code}}`` routinely receive multi-line text, and a line edit silently
-    flattens newlines out of a paste.
-    """
+class SlotEdit(GrowingTextEdit):
+    """The text input for one slot."""
 
     MAX_VISIBLE_LINES = 6
 
     def __init__(self, slot: Slot) -> None:
-        super().__init__()
+        super().__init__(max_visible_lines=self.MAX_VISIBLE_LINES)
         self.slot = slot
-        self.setObjectName("Field")
         self.setPlaceholderText(slot.placeholder_hint)
-        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # Tab must move between slots, not insert a tab character.
-        self.setTabChangesFocus(True)
-        self.document().documentLayout().documentSizeChanged.connect(self._resize_to_fit)
-        self._resize_to_fit()
-
-    def _resize_to_fit(self) -> None:
-        metrics = self.fontMetrics()
-        lines = max(1, min(int(self.document().size().height()), self.MAX_VISIBLE_LINES))
-        chrome = self.contentsMargins().top() + self.contentsMargins().bottom() + 18
-        self.setFixedHeight(int(lines * metrics.lineSpacing() + chrome))
-        self.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-            if self.document().size().height() > self.MAX_VISIBLE_LINES
-            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        # Slot values are the prose that actually gets pasted, so this is where
+        # a typo costs the most.
+        spellcheck.attach(self)
 
 
 class OptionChip(QLabel):
@@ -390,6 +370,11 @@ class FillPanel(QWidget):
         if key == Qt.Key.Key_Escape:
             self.cancelled.emit()
             return True
+
+        # Ctrl+. is the quick-fix binding people already have in their fingers.
+        if key == Qt.Key.Key_Period and modifiers & Qt.KeyboardModifier.ControlModifier:
+            focused = self.focusWidget()
+            return isinstance(focused, SlotEdit) and spellcheck.open_suggestions(focused)
 
         # Every key below belongs to a chip row. While a text field has focus
         # they all mean what they always mean, so they are left alone.

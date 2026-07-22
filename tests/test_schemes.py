@@ -77,6 +77,30 @@ class TestTokens:
         assert soft.hslSaturationF() >= 0.50
 
     @ALL
+    def test_the_spelling_mark_carries_further_than_its_source(self, key):
+        """Qt's wave underline is one antialiased pixel high, so half of it is
+        background. SPELL exists to survive that; it must never come out dimmer
+        than the SECONDARY it derives from."""
+        t = schemes.get(key).tokens()
+        spell, secondary = QColor(t["SPELL"]), QColor(t["SECONDARY"])
+        assert spell.lightnessF() >= secondary.lightnessF()
+        assert spell.hslSaturationF() >= secondary.hslSaturationF()
+        assert _contrast(t["SPELL"], t["PANEL"]) >= _contrast(t["SECONDARY"], t["PANEL"])
+
+    @ALL
+    def test_the_spelling_mark_is_visible_on_every_surface(self, key):
+        t = schemes.get(key).tokens()
+        for surface in ("PANEL", "PANEL_FOCUS", "TILE"):
+            # 3.0 is the WCAG bar for non-text UI; a squiggle is exactly that.
+            assert _contrast(t["SPELL"], t[surface]) >= 3.0, f"{key} on {surface}"
+
+    @ALL
+    def test_the_spelling_mark_keeps_its_hue(self, key):
+        """Brightening must not bleach it to white -- the mark still belongs to
+        the scheme, and a grey squiggle reads as a rendering artefact."""
+        assert QColor(schemes.get(key).tokens()["SPELL"]).hslSaturationF() >= 0.85
+
+    @ALL
     def test_selected_tile_is_distinguishable_from_a_plain_one(self, key):
         t = schemes.get(key).tokens()
         assert t["TILE_SELECTED"] != t["TILE"]

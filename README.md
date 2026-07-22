@@ -40,9 +40,11 @@ Then reload AutoHotkey and press **CapsLock+Space**.
 | `Enter` | Paste — or open the fill panel if the template has slots |
 | `Ctrl+Enter` | Paste immediately, skipping the fill panel |
 | `Esc` | Clear the search, then hide |
+| `Ctrl+Q` | Quit PCC — the next `CapsLock+Space` starts it again |
 | `Tab` / `Shift+Tab` | Next / previous slot (fill panel) |
 | `← →` | Pick an option on a choice slot; *type* for anything else |
 | `Shift+Enter` | Newline inside a slot |
+| `Ctrl+.` | Fix the misspelled word at the caret (or right-click it) |
 | `Ctrl+N` / `Ctrl+Shift+N` | New template / new tab |
 | `F2` / `Shift+F2` | Edit template / rename tab |
 | `Ctrl+D` | Duplicate template |
@@ -105,6 +107,36 @@ keystroke to a text field, and `Tab` moves on to the next slot. A choice slot's
 field only appears once you ask for it, so a panel of choices stays one line per
 slot.
 
+## Spelling
+
+Misspellings get a wavy underline **and a translucent wash** in the template
+editor and the fill panel's text fields, both derived from the scheme's
+secondary colour. The wash is doing the visible work: Qt draws a wave underline
+one antialiased pixel high, which on these near-black surfaces is easy to miss
+no matter how bright you make it. The wave is what says *spelling* rather than
+*selected*.
+
+`Ctrl+.` on the word — or a right-click — offers the fixes, plus *Ignore* and
+*Add to dictionary*; the first suggestion is preselected, so `Ctrl+.` `⏎` is the
+whole interaction. Right-clicking correctly spelled text still gives you the
+usual Cut/Copy/Paste menu.
+
+The checker is the one already built into Windows
+([spell.py](pcc/spell.py) binds it with `ctypes` — no extra package, no
+dictionary to ship), which means it knows the words you have added elsewhere,
+and *Add to dictionary* teaches them to Word and Edge too.
+
+What it deliberately does **not** underline: `{{slot}}` names, `` `code` ``,
+```` ``` ````-fenced blocks, `snake_case`, `camelCase`, `ACRONYMS`, URLs,
+paths like `pcc/ui/palette.py`, anything containing a digit, and any script
+other than Latin. A prompt body is prose threaded with code, and marking the
+code would make the marks worthless.
+
+It stays out of the way of the thing this app is measured on: nothing about it
+runs on the `CapsLock+Space` path, the ~20 ms of one-time setup is paid during
+the startup prewarm, and a keystroke costs about 30 µs — one paragraph
+re-scanned, against a per-word cache. Turn it off with `Ctrl+,` → *Spell check*.
+
 ## Appearance
 
 Press **`Ctrl+,`** inside the palette (or tray → *Settings…*).
@@ -165,6 +197,8 @@ place, and `Ctrl+Shift+E` opens the file.
 | `margin` | `40` | Inset from the active monitor's work area |
 | `paste_key` | `ctrl+v` | Use `shift+insert` for terminals that ignore Ctrl+V |
 | `restore_clipboard` | `true` | Put your previous clipboard back after pasting |
+| `spellcheck` | `true` | Mark misspellings while you write |
+| `spellcheck_language` | `null` | BCP-47 tag, e.g. `en-GB`. `null` → your Windows locale |
 | `library_path` | `null` | Point `templates.json` somewhere git-tracked |
 
 Sizes scale by ratio rather than fixed offsets, so the hierarchy holds up as

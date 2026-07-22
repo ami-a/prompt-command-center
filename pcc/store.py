@@ -28,6 +28,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "restore_clipboard_delay_ms": 300,
     "paste_key": "ctrl+v",         # or "shift+insert" for stubborn terminals
 
+    # Spelling. The checker is the one built into Windows, so there is no
+    # dictionary to ship and words you add here are known to every other app.
+    "spellcheck": True,
+    "spellcheck_language": None,   # None -> your Windows locale, then en-US
+
     # Appearance. All of this is editable in-app with Ctrl+, -- the panel
     # applies changes live and writes back here on save.
     #

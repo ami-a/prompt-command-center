@@ -121,6 +121,11 @@ def build_settings() -> list[Setting]:
         Setting("paste_key", "Paste with", "shift+insert for terminals",
                 values=["ctrl+v", "shift+insert"],
                 fmt=lambda v: str(v).replace("+", " + ")),
+        # The language it checks in is deliberately not a row: Windows reports
+        # twenty-odd locale tags, and cycling those with Left/Right would be
+        # miserable. It stays a hand-editable key in settings.json.
+        Setting("spellcheck", "Spell check", "marks typos as you write",
+                values=[True, False], fmt=lambda v: "on" if v else "off"),
     ]
 
 

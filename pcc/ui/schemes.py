@@ -110,6 +110,22 @@ class Scheme:
             # enough to stay legible whatever the accent's own lightness is.
             "ON_ACCENT": _hsl(hue, 0.80, 0.06).name(),
             "SECONDARY": secondary.name(),
+            # The spelling squiggle. The secondary colour, but louder.
+            #
+            # Qt draws a wave underline one antialiased pixel high, so roughly
+            # half of what you see is the *background* bleeding through and the
+            # mark lands far dimmer than its nominal colour suggests. Flooring
+            # the saturation and lifting the lightness is what buys that back.
+            #
+            # Lift-only, never darken: Ice and Matrix have secondaries that are
+            # already bright, and clamping them to a fixed target made those two
+            # schemes worse rather than better.
+            "SPELL": _hsl(
+                _hue_of(secondary),
+                max(0.90, secondary.hslSaturationF()),
+                max(secondary.lightnessF(), 0.66,
+                    min(0.78, secondary.lightnessF() + 0.08)),
+            ).name(),
             "TEXT": text.name(),
             # Specified in HSL, not mixed toward the background: mixing drains
             # the chroma and secondary text ends up muddy grey in every theme.

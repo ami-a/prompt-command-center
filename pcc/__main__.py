@@ -92,6 +92,7 @@ def main() -> int:
     app.setStyleSheet(load_stylesheet(settings))
     library = store.load_library(store.library_path(settings))
     palette = PaletteWindow(library, settings)
+    palette.quit_requested.connect(app.quit)
     palette.prewarm()
 
     host = HostWindow()
@@ -133,7 +134,7 @@ def main() -> int:
     reload_action.triggered.connect(palette.reload_library)
     restyle_action = QAction("Reload settings", menu)
     restyle_action.triggered.connect(palette.reload_settings)
-    quit_action = QAction("Quit PCC", menu)
+    quit_action = QAction("Quit PCC\tCtrl+Q", menu)
     quit_action.triggered.connect(app.quit)
     menu.addAction(show_action)
     menu.addAction(prefs_action)
