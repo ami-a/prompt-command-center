@@ -39,16 +39,21 @@ Then reload AutoHotkey and press **CapsLock+Space**.
 | `Alt+1..9` | Jump to tab N |
 | `Enter` | Paste — or open the fill panel if the template has slots |
 | `Ctrl+Enter` | Paste immediately, skipping the fill panel |
+| `Alt+Enter` | Paste **and** press Enter — sends the chat in one keystroke |
+| `Ctrl+Space` | Mark this tile for **composition** (stack it, or layer a modifier) |
 | `Esc` | Clear the search, then hide |
 | `Ctrl+Q` | Quit PCC — the next `CapsLock+Space` starts it again |
+| `Ctrl+Z` | Undo the last delete |
+| `Ctrl+H` | **Library health** — flags empty, duplicate, broken, never-used |
 | `Tab` / `Shift+Tab` | Next / previous slot (fill panel) |
 | `← →` | Pick an option on a choice slot; *type* for anything else |
+| `Ctrl+P` | Toggle the full, untruncated preview (fill panel) |
 | `Shift+Enter` | Newline inside a slot |
 | `Ctrl+.` | Fix the misspelled word at the caret (or right-click it) |
 | `Ctrl+N` / `Ctrl+Shift+N` | New template / new tab |
 | `F2` / `Shift+F2` | Edit template / rename tab |
 | `Ctrl+D` | Duplicate template |
-| `Ctrl+Del` / `Ctrl+Shift+Del` | Delete template / delete tab |
+| `Ctrl+Del` / `Ctrl+Shift+Del` | Delete template / delete tab (`Ctrl+Z` to undo) |
 | `Ctrl+←→↑↓` | Reorder the selected tile |
 | `Ctrl+Shift+← →` | Move the current tab |
 | `Ctrl+,` | **Settings** — colours, fonts, layout, with live preview |
@@ -75,15 +80,60 @@ file is watched and reloads live.
 | `{{name\|one\|two\|three}}` | …offered as a choice, `one` preselected |
 | `{{name\|\|two\|three}}` | …a choice with nothing preselected |
 | `{{name\|a \\\| b}}` | a default containing a literal `\|` |
+| `{{clipboard}}` `{{selection}}` `{{app}}` `{{window}}` `{{date}}` `{{time}}` | **auto-filled from context** — never typed |
+| `{{>title}}` or `{{>id}}` | **includes** another template's body inline |
+| `{{^}}` | parks the **caret** here after pasting |
 
-On Enter:
+On Enter, each slot resolves in order:
 
 1. a value you chose or typed wins,
 2. otherwise the default — the first option, for a choice — is used,
-3. otherwise the literal `{{name}}` is pasted — nothing is ever silently dropped,
+3. otherwise a context value, if it's a magic slot like `{{clipboard}}`,
+4. otherwise the literal `{{name}}` is pasted — nothing is ever silently dropped,
    so you can finish the prompt in the chat box.
 
 The same `{{name}}` used twice shares one input and fills every occurrence.
+
+### Magic slots — context, filled in for you
+
+Copy some code, press **CapsLock+Space**, pick *Explain this code* — the `{{code}}`
+field is **already filled** from the clipboard (and pre-selected, so if the guess
+is wrong your first keystroke replaces it). A template whose *only* slots are magic
+(`Explain {{clipboard}}`) skips the fill panel and pastes at once.
+
+Magic slots show up as a dim **CONTEXT** line in the fill panel — `clipboard · 1.2k
+chars · app · Code.exe` — because a value you didn't type should always be visible.
+An empty source falls back to the literal token, exactly like an unfilled slot.
+
+`{{selection}}` goes one better: with `capture_selection` on (see below) PCC copies
+whatever is selected in the app you summoned it over, so you don't even press
+Ctrl+C first. It's **off by default** — it synthesises Ctrl+C, which in a console
+is SIGINT — and always skips terminals.
+
+### Composition — few pieces, many prompts
+
+Press **Ctrl+Space** to *mark* tiles, then **Enter** to combine them:
+
+- Mark two or three ordinary templates → they paste **stacked**, joined by blank
+  lines (a shared `{{code}}` collapses to one field).
+- Tag a template `modifier` (e.g. *"Be concise."*, *"Answer as a table."*) and it
+  becomes a fragment you **layer on**: mark it, then Enter on any base applies it.
+  A dozen modifiers over forty templates is hundreds of prompts from one small
+  library.
+
+`{{>rules}}` **includes** another template by title or id — write your standing
+instructions once and reference them everywhere. Includes are depth-limited and
+cycle-safe: a loop yields a visible `{{>cycle: name}}` marker, never a hang.
+
+### Frecency, memory, and health
+
+The templates you use rise in the ranking (a capped nudge — it breaks ties, never
+beats a title match), keyed to the app you're in. Short slot answers come back as
+ghost text next time. Delete never asks — it deletes and offers **Ctrl+Z** — and
+every destructive save also drops a rotating on-disk snapshot. **Ctrl+H** runs a
+health check that flags the empty, duplicated, broken, and never-used templates a
+library accumulates. These live in `%APPDATA%\PCC\usage.json`, kept out of
+`templates.json` so your library stays git-clean.
 
 ### The fill panel
 
@@ -197,6 +247,7 @@ place, and `Ctrl+Shift+E` opens the file.
 | `margin` | `40` | Inset from the active monitor's work area |
 | `paste_key` | `ctrl+v` | Use `shift+insert` for terminals that ignore Ctrl+V |
 | `restore_clipboard` | `true` | Put your previous clipboard back after pasting |
+| `capture_selection` | `off` | `smart` copies the target's selection for `{{selection}}` when a template uses it; `always` every summon; consoles always skipped |
 | `spellcheck` | `true` | Mark misspellings while you write |
 | `spellcheck_language` | `null` | BCP-47 tag, e.g. `en-GB`. `null` → your Windows locale |
 | `library_path` | `null` | Point `templates.json` somewhere git-tracked |
@@ -244,7 +295,12 @@ Three Win32 details do the heavy lifting:
 | [pcc/winapi.py](pcc/winapi.py) | Foreground capture/restore, clipboard, `SendInput` |
 | [pcc/ipc.py](pcc/ipc.py) | The hidden window AHK posts to |
 | [pcc/placement.py](pcc/placement.py) | Multi-monitor, DPI-aware positioning |
-| [pcc/search.py](pcc/search.py) | Prefix → acronym → subsequence → fuzzy ranking |
+| [pcc/search.py](pcc/search.py) | Prefix → acronym → subsequence → fuzzy ranking, + frecency |
+| [pcc/context.py](pcc/context.py) | Magic-slot resolvers ({{clipboard}}, {{app}}, …), injected into render |
+| [pcc/usage.py](pcc/usage.py) | Frecency, per-app affinity, slot memory (disposable) |
+| [pcc/compose.py](pcc/compose.py) | Stacking + modifiers, composed at the body level |
+| [pcc/lint.py](pcc/lint.py) | Library health findings (pure) |
+| [pcc/journal.py](pcc/journal.py) | In-session undo ring for destructive edits |
 | [pcc/ui/schemes.py](pcc/ui/schemes.py) | Colour schemes; 3 source colours → 21 derived tokens |
 | [pcc/ui/theme.py](pcc/ui/theme.py) | Resolves `theme.qss` against settings |
 | [pcc/ui/settings_panel.py](pcc/ui/settings_panel.py) | The `Ctrl+,` panel |
@@ -257,7 +313,7 @@ Three Win32 details do the heavy lifting:
 ```powershell
 $py = "E:\Prpjects\2026\PCC\.venv\Scripts\python.exe"
 
-& $py -m pytest tests            # 298 unit tests, runs locked/headless
+& $py -m pytest tests            # 485 unit tests, runs locked/headless
 & $py -m pcc --show              # run with a console attached
 $env:PCC_TIMING=1; & $py -m pcc  # log show latency to stderr
 ```
