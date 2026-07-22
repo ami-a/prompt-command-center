@@ -24,6 +24,40 @@ def _ids(query: str) -> list[str]:
     return [hit.template.id for hit in search(query, _tabs())]
 
 
+class TestFrecencyBonus:
+    def test_bonus_breaks_ties_between_equal_matches(self):
+        # "Explain this code" and (nothing else with a comparable structure);
+        # use a query that matches two titles as a substring equally.
+        # Equal-length prefixes so "review" sits at the same index in both -- a
+        # genuine structural tie, which library order then breaks.
+        tabs = [
+            Tab(name="T", id="t1", templates=[
+                Template(title="xxx review", body="", id="a"),
+                Template(title="yyy review", body="", id="b"),
+            ]),
+        ]
+        neutral = [h.template.id for h in search("review", tabs)]
+        boosted = [h.template.id for h in search("review", tabs, bonus=lambda i: 5.0 if i == "b" else 0.0)]
+        assert neutral == ["a", "b"]      # library order on a tie
+        assert boosted[0] == "b"          # frecency lifts b above the tie
+
+    def test_bonus_never_overturns_a_prefix_match(self):
+        # A huge bonus on a mere substring must still lose to a title prefix.
+        tabs = [
+            Tab(name="T", id="t1", templates=[
+                Template(title="review something", body="", id="prefix"),
+                Template(title="a review", body="", id="substr"),
+            ]),
+        ]
+        hits = search("review", tabs, bonus=lambda i: 6.0 if i == "substr" else 0.0)
+        assert hits[0].template.id == "prefix"
+
+    def test_bonus_cannot_drag_in_a_nonmatch(self):
+        tabs = _tabs()
+        ids = [h.template.id for h in search("zzzz", tabs, bonus=lambda i: 6.0)]
+        assert ids == []
+
+
 def test_empty_query_returns_nothing():
     assert search("", _tabs()) == []
     assert search("   ", _tabs()) == []

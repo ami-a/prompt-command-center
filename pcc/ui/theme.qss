@@ -229,6 +229,16 @@ QLineEdit#Field:focus, QPlainTextEdit#Field:focus {
     letter-spacing: 1px;
 }
 
+/* The CONTEXT strip: what the magic slots ({{clipboard}}, {{app}}...) resolved
+   to. Carries the accent hue so it reads as "the tool filled this in", but dim
+   enough to stay a caption rather than compete with the fields below it. */
+#ContextStrip {
+    font-size: ${FS_TINY}px;
+    color: ${ACCENT_DEEP};
+    padding: 2px 2px 0px 2px;
+    letter-spacing: 0.3px;
+}
+
 /* --- settings rows ------------------------------------------------------- */
 
 #SettingRow {

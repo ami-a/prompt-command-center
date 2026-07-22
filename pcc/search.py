@@ -9,6 +9,7 @@ strongest first, and only falls back to rapidfuzz for typo tolerance.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 from rapidfuzz import fuzz
 
@@ -36,8 +37,19 @@ def _acronym(text: str) -> str:
     return "".join(word[0] for word in text.replace("-", " ").replace("_", " ").split() if word)
 
 
-def score_template(query: str, template: Template, tab: Tab) -> float:
-    """Rank one template against ``query``. Higher is better; 0 means no match."""
+def score_template(query: str, template: Template, tab: Tab, bonus: float = 0.0) -> float:
+    """Rank one template against ``query``. Higher is better; 0 means no match.
+
+    ``bonus`` is an optional frecency nudge (see :mod:`pcc.usage`), added only to
+    genuine matches and capped by the caller so it can break ties without ever
+    overturning a title-prefix match. A non-match stays 0 regardless of bonus:
+    familiarity must not drag an unrelated template into the results.
+    """
+    base = _base_score(query, template, tab)
+    return base + bonus if base > 0 else 0.0
+
+
+def _base_score(query: str, template: Template, tab: Tab) -> float:
     title = template.title.lower()
     body = template.body.lower()
     tab_name = tab.name.lower()
@@ -79,11 +91,18 @@ def score_template(query: str, template: Template, tab: Tab) -> float:
     return 0.0
 
 
-def search(query: str, tabs: list[Tab], limit: int = 60) -> list[Hit]:
+def search(
+    query: str,
+    tabs: list[Tab],
+    limit: int = 60,
+    bonus: "Callable[[str], float] | None" = None,
+) -> list[Hit]:
     """Rank every template in every tab against ``query``.
 
     Results are stable: equal scores keep library order, so the grid does not
-    reshuffle unpredictably as the query grows.
+    reshuffle unpredictably as the query grows. ``bonus`` optionally maps a
+    template id to a frecency nudge; it is applied only to matches and only
+    after the structural score clears :data:`MIN_SCORE`.
     """
     query = query.strip().lower()
     if not query:
@@ -93,9 +112,11 @@ def search(query: str, tabs: list[Tab], limit: int = 60) -> list[Hit]:
     for order, (tab, template) in enumerate(
         (tab, template) for tab in tabs for template in tab.templates
     ):
-        score = score_template(query, template, tab)
-        if score >= MIN_SCORE:
-            hits.append((score, order, Hit(tab, template, score)))
+        base = score_template(query, template, tab)
+        if base < MIN_SCORE:
+            continue
+        score = base + (bonus(template.id) if bonus is not None else 0.0)
+        hits.append((score, order, Hit(tab, template, score)))
 
     hits.sort(key=lambda item: (-item[0], item[1]))
     return [item[2] for item in hits[:limit]]

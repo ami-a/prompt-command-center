@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QScrollArea,
     QSizePolicy,
@@ -19,10 +20,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..context import ContextItem, is_magic
 from ..model import Slot, Template, render
 from . import spellcheck
 from .flow import FlowLayout
 from .textedit import GrowingTextEdit
+
+#: Slot names worth pre-filling from a substantial clipboard. Anything landing
+#: here is *pre-selected*, so a wrong guess costs one keystroke to replace --
+#: which is what lets the guess be aggressive.
+PREFILL_SLOTS = frozenset(
+    {"code", "text", "error", "input", "content", "snippet", "log", "body", "diff"}
+)
+PREFILL_MIN_CHARS = 150
+
+#: Very rough chars-per-token. Good enough to warn you off a context limit; not
+#: worth a real tokeniser dependency on the hot path.
+CHARS_PER_TOKEN = 3.7
 
 
 class SlotEdit(GrowingTextEdit):
@@ -254,6 +268,8 @@ class FillPanel(QWidget):
         super().__init__()
         self.template: Template | None = None
         self._fields: list[SlotField] = []
+        self._resolve: object = None          # Callable[[str], str | None] | None
+        self._prefill_field: SlotField | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -263,6 +279,15 @@ class FillPanel(QWidget):
         self.title.setObjectName("PanelTitle")
         self.title.setWordWrap(True)
         layout.addWidget(self.title)
+
+        # The CONTEXT strip: what the magic slots resolved to. Dim, and hidden
+        # when a template has no magic slots, so ordinary templates look exactly
+        # as they did before.
+        self.context = QLabel()
+        self.context.setObjectName("ContextStrip")
+        self.context.setWordWrap(True)
+        self.context.setVisible(False)
+        layout.addWidget(self.context)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -282,9 +307,25 @@ class FillPanel(QWidget):
         scroll.setWidget(self._fields_host)
         layout.addWidget(scroll, 1)
 
+        preview_header = QWidget()
+        preview_header_layout = QVBoxLayout(preview_header)
+        preview_header_layout.setContentsMargins(0, 0, 0, 0)
+        preview_header_layout.setSpacing(0)
+        header_row = QWidget()
+        header_row_layout = QHBoxLayout(header_row)
+        header_row_layout.setContentsMargins(0, 0, 0, 0)
         preview_label = QLabel("PREVIEW")
         preview_label.setObjectName("PreviewLabel")
-        layout.addWidget(preview_label)
+        header_row_layout.addWidget(preview_label)
+        header_row_layout.addStretch(1)
+        # Live token/char estimate, right-aligned against the PREVIEW label so it
+        # reads as a caption on the same line.
+        self.estimate = QLabel()
+        self.estimate.setObjectName("PreviewLabel")
+        self.estimate.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        header_row_layout.addWidget(self.estimate)
+        preview_header_layout.addWidget(header_row)
+        layout.addWidget(preview_header)
 
         self.preview = QLabel()
         self.preview.setObjectName("Preview")
@@ -295,8 +336,27 @@ class FillPanel(QWidget):
 
     # --- lifecycle ----------------------------------------------------------
 
-    def load(self, template: Template) -> None:
+    def load(
+        self,
+        template: Template,
+        resolve=None,
+        context_items: "list[ContextItem] | None" = None,
+        prefill: str | None = None,
+        recall: "dict[str, str | None] | None" = None,
+    ) -> None:
+        """Show ``template``.
+
+        ``resolve`` is the magic-slot closure (see :mod:`pcc.context`) threaded
+        into every :func:`render`; ``context_items`` are the already-resolved
+        magic slots to show in the CONTEXT strip; ``prefill`` is the clipboard
+        text offered to the first text slot whose name invites it.
+
+        All three default to nothing, so ``load(template)`` behaves exactly as
+        before -- which is what keeps the existing headless tests valid.
+        """
         self.template = template
+        self._resolve = resolve
+        self._prefill_field = None
         self.title.setText(template.title)
 
         self._fields.clear()
@@ -307,18 +367,61 @@ class FillPanel(QWidget):
                 widget.setParent(None)
                 widget.deleteLater()
 
+        # Magic slots are resolved for us; they get a dim CONTEXT line, never a
+        # field. Only the slots the user actually types get an input.
+        recall = recall or {}
         for slot in template.slots:
+            if is_magic(slot.name):
+                continue
             field = SlotField(slot)
             field.changed.connect(self._update_preview)
+            # Slot memory: last time's answer as ghost text, never pre-filled --
+            # a remembered "Python" is usually right but must not survive as the
+            # value if the user just tabs past it.
+            remembered = recall.get(slot.name)
+            if remembered and field.options is None:
+                field.edit.setPlaceholderText(remembered)
             self._fields_layout.addWidget(field)
             self._fields.append(field)
 
         self._fields_layout.addStretch(1)
+        self._show_context(context_items or [])
+        self._apply_prefill(prefill)
         self._update_preview()
 
+    def _show_context(self, items: "list[ContextItem]") -> None:
+        if not items:
+            self.context.setVisible(False)
+            self.context.clear()
+            return
+        self.context.setText("   ".join(item.summary() for item in items))
+        self.context.setVisible(True)
+
+    def _apply_prefill(self, prefill: str | None) -> None:
+        """Drop a substantial clipboard into the first slot that invites it.
+
+        Pre-*selected*, not just pre-filled: :meth:`focus_first` selects the
+        text, so if the guess is wrong the first keystroke replaces it and the
+        feature has cost nothing.
+        """
+        if not prefill or len(prefill) < PREFILL_MIN_CHARS:
+            return
+        for field in self._fields:
+            if field.options is None and field.slot.name.lower() in PREFILL_SLOTS:
+                field.edit.setPlainText(prefill)
+                self._prefill_field = field
+                return
+
     def focus_first(self) -> None:
-        if self._fields:
-            self._fields[0].focus_entry()
+        target = self._prefill_field or (self._fields[0] if self._fields else None)
+        if target is None:
+            return
+        if target is self._prefill_field:
+            # Land on the guess with it selected: Enter accepts, any key replaces.
+            target.edit.setFocus()
+            target.edit.selectAll()
+        else:
+            target.focus_entry()
 
     def values(self) -> dict[str, str]:
         return {field.slot.name: field.value() for field in self._fields}
@@ -326,11 +429,22 @@ class FillPanel(QWidget):
     def rendered(self) -> str:
         if self.template is None:
             return ""
-        return render(self.template.body, self.values())
+        return render(self.template.body, self.values(), resolve=self._resolve)
 
     def _update_preview(self) -> None:
-        text = " ".join(self.rendered().split())
+        full = self.rendered()
+        text = " ".join(full.split())
         self.preview.setText(text[:400] + ("…" if len(text) > 400 else ""))
+        self.estimate.setText(self._estimate(full))
+
+    @staticmethod
+    def _estimate(text: str) -> str:
+        chars = len(text)
+        if not chars:
+            return ""
+        tokens = max(1, round(chars / CHARS_PER_TOKEN))
+        char_label = f"{chars / 1000:.1f}k" if chars >= 1000 else str(chars)
+        return f"~{tokens} tokens · {char_label} chars"
 
     # --- keys ---------------------------------------------------------------
 

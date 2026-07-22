@@ -67,9 +67,17 @@ def destroy(qapp):
 
 
 @pytest.fixture
-def palette(qapp, library, settings):
+def usage(tmp_path):
+    """A UsageStore rooted in the test's tmp dir, never the real %APPDATA%."""
+    from pcc.usage import UsageStore
+
+    return UsageStore(tmp_path / "usage.json")
+
+
+@pytest.fixture
+def palette(qapp, library, settings, usage):
     from pcc.ui.palette import PaletteWindow
 
-    window = PaletteWindow(library, settings)
+    window = PaletteWindow(library, settings, usage=usage)
     yield window
     _destroy(qapp, window)

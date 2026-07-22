@@ -253,6 +253,125 @@ class TestFillPanel:
         assert not palette.fill.handle_key(event), "Shift+Enter must reach the editor"
 
 
+class TestMagicSlots:
+    """``{{clipboard}}``, ``{{date}}`` etc. -- resolved, never typed."""
+
+    def test_magic_slots_get_no_input_field(self, palette):
+        from pcc.context import ResolveEnv, context_items, make_resolver
+
+        env = ResolveEnv(clipboard="copied text")
+        tmpl = Template(title="T", body="Explain {{clipboard}} for {{audience}}")
+        palette.fill.load(
+            tmpl,
+            resolve=make_resolver(env),
+            context_items=context_items(["clipboard"], env),
+        )
+        # Only the human slot gets a field; the magic one is resolved for us.
+        assert [f.slot.name for f in palette.fill._fields] == ["audience"]
+
+    def test_context_strip_shows_resolved_magic(self, palette):
+        from pcc.context import ResolveEnv, context_items, make_resolver
+
+        env = ResolveEnv(clipboard="hi")
+        tmpl = Template(title="T", body="Explain {{clipboard}} for {{audience}}")
+        palette.fill.load(
+            tmpl, resolve=make_resolver(env), context_items=context_items(["clipboard"], env)
+        )
+        # isVisible() is False whenever the top-level window is hidden, which it
+        # always is in these headless tests; isHidden() reflects the widget's own
+        # shown/hidden intent instead.
+        assert not palette.fill.context.isHidden()
+        assert "clipboard · hi" in palette.fill.context.text()
+
+    def test_rendered_fills_magic_and_typed_together(self, palette):
+        from pcc.context import ResolveEnv, make_resolver
+
+        env = ResolveEnv(clipboard="CODE")
+        tmpl = Template(title="T", body="{{clipboard}} for {{audience}}")
+        palette.fill.load(tmpl, resolve=make_resolver(env))
+        palette.fill._fields[0].edit.setPlainText("a novice")
+        assert palette.fill.rendered() == "CODE for a novice"
+
+    def test_magic_only_template_pastes_without_the_fill_panel(self, palette, monkeypatch):
+        from pcc.ui.palette import PAGE_GRID
+
+        pasted = []
+        monkeypatch.setattr(palette, "paste_text", pasted.append)
+        monkeypatch.setattr(winapi_module(), "clipboard_get_text", lambda: "the code")
+        palette._activate(Template(title="T", body="Explain {{clipboard}}"))
+        assert pasted == ["Explain the code"]
+        assert palette.stack.currentIndex() == PAGE_GRID
+
+    def test_clipboard_prefills_and_preselects_a_code_slot(self, palette):
+        big = "x" * 300
+        tmpl = Template(title="T", body="Explain\n```\n{{code}}\n```")
+        palette.fill.load(tmpl, prefill=big)
+        field = palette.fill._fields[0]
+        assert field.edit.toPlainText() == big
+        palette.fill.focus_first()
+        # Pre-selected: the whole guess is highlighted, so one keystroke replaces it.
+        assert field.edit.textCursor().hasSelection()
+
+    def test_short_clipboard_does_not_prefill(self, palette):
+        tmpl = Template(title="T", body="{{code}}")
+        palette.fill.load(tmpl, prefill="tiny")
+        assert palette.fill._fields[0].edit.toPlainText() == ""
+
+
+def winapi_module():
+    from pcc import winapi
+
+    return winapi
+
+
+class TestMemory:
+    """Frecency recording, slot recall, and the reload diff toast."""
+
+    def test_activating_a_template_records_a_use(self, palette, monkeypatch):
+        monkeypatch.setattr(palette, "paste_text", lambda *_: None)
+        monkeypatch.setattr(winapi_module(), "clipboard_get_text", lambda: "")
+        template = palette.library.tabs[0].templates[2]  # "Write tests", no slots
+        palette._activate(template)
+        assert palette.usage.frecency(template.id) == 1.0
+
+    def test_submitting_a_fill_records_use_and_slot(self, palette, monkeypatch):
+        monkeypatch.setattr(palette, "paste_text", lambda *_: None)
+        template = Template(title="T", body="Say {{greeting}}", id="pX")
+        palette._fill_template = template
+        palette.fill.load(template)
+        palette.fill._fields[0].edit.setPlainText("hi")
+        palette._on_fill_submitted("Say hi")
+        assert palette.usage.frecency("pX") == 1.0
+        assert palette.usage.slot_value("pX", "greeting") == "hi"
+
+    def test_recalled_slot_value_becomes_ghost_text(self, palette):
+        template = Template(title="T", body="Say {{greeting}}", id="pY")
+        palette.fill.load(template, recall={"greeting": "howdy"})
+        field = palette.fill._fields[0]
+        assert field.edit.placeholderText() == "howdy"
+        # Ghost only: the field is still empty, so tabbing past keeps it unfilled.
+        assert field.edit.toPlainText() == ""
+
+    def test_reload_summary_counts_add_change_remove(self, palette):
+        from pcc.model import Library, Tab, Template
+
+        before = Library(tabs=[Tab(name="A", id="t", templates=[
+            Template(title="keep", body="same", id="k"),
+            Template(title="gone", body="x", id="g"),
+            Template(title="edit", body="old", id="e"),
+        ])])
+        after = Library(tabs=[Tab(name="A", id="t", templates=[
+            Template(title="keep", body="same", id="k"),
+            Template(title="edit", body="NEW", id="e"),
+            Template(title="fresh", body="y", id="f"),
+        ])])
+        assert palette._reload_summary(before, after) == "+1 ~1 -1"
+
+    def test_reload_summary_is_word_when_unchanged(self, palette):
+        lib = palette.library
+        assert palette._reload_summary(lib, lib) == "RELOADED"
+
+
 class TestChoiceSlots:
     """``{{tone|blunt|warm}}`` -- chips, plus custom input that always wins."""
 

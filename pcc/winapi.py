@@ -317,3 +317,61 @@ def is_elevated() -> bool:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         return False
+
+
+# --- Window identity (for context resolvers) --------------------------------
+
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
+def window_title(hwnd: int) -> str:
+    """Title bar text of ``hwnd``, or ``""``.
+
+    Feeds the ``{{window}}`` magic slot. Never raises: an invalid handle or a
+    window that refuses the query just yields an empty string, which resolves to
+    the literal token exactly like any other unavailable context.
+    """
+    if not is_window(hwnd):
+        return ""
+    try:
+        length = int(user32.GetWindowTextLengthW(wintypes.HWND(hwnd)))
+        if length <= 0:
+            return ""
+        buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(wintypes.HWND(hwnd), buffer, length + 1)
+        return buffer.value or ""
+    except Exception:
+        return ""
+
+
+def process_name(hwnd: int) -> str:
+    """Executable name that owns ``hwnd`` (e.g. ``Code.exe``), or ``""``.
+
+    ``QueryFullProcessImageNameW`` rather than the older ``GetModuleFileNameEx``:
+    it needs only ``PROCESS_QUERY_LIMITED_INFORMATION``, which Windows grants
+    across integrity levels, so it still answers for an elevated target when PCC
+    is not. The handle is always closed; every failure path returns ``""``.
+    """
+    if not is_window(hwnd):
+        return ""
+    pid = wintypes.DWORD(0)
+    user32.GetWindowThreadProcessId(wintypes.HWND(hwnd), ctypes.byref(pid))
+    if not pid.value:
+        return ""
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+    if not handle:
+        return ""
+    try:
+        size = wintypes.DWORD(260)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        ok = kernel32.QueryFullProcessImageNameW(
+            wintypes.HANDLE(handle), 0, buffer, ctypes.byref(size)
+        )
+        if not ok:
+            return ""
+        full = buffer.value or ""
+        return full.rsplit("\\", 1)[-1]
+    except Exception:
+        return ""
+    finally:
+        kernel32.CloseHandle(wintypes.HANDLE(handle))

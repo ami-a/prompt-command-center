@@ -155,6 +155,8 @@ def main() -> int:
     tray.show()
 
     app.aboutToQuit.connect(watcher.stop)
+    # Flush the debounced usage tail so the last few pastes are not lost on exit.
+    app.aboutToQuit.connect(palette.usage.flush)
 
     if "--show" in sys.argv:
         palette.trigger()

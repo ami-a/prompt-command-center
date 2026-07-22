@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Iterator
+from typing import Callable, Iterator
 
 # {{ name | tail }} -- name may not contain '|' or '}'; the tail may not contain
 # '}'. Both sides are whitespace-trimmed. A missing '|' yields None for the
@@ -118,18 +118,28 @@ def readable(body: str) -> str:
     return " ".join(PLACEHOLDER_RE.sub(substitute, body).split())
 
 
-def render(body: str, values: dict[str, str] | None = None) -> str:
+def render(
+    body: str,
+    values: dict[str, str] | None = None,
+    resolve: "Callable[[str], str | None] | None" = None,
+) -> str:
     """Substitute ``values`` into ``body``.
 
     Resolution order per placeholder:
 
     1. a non-empty user value,
     2. the placeholder's own default -- the first option, for a choice slot,
-    3. the literal ``{{name}}`` token.
+    3. an injected ``resolve(name)`` (magic slots: clipboard, date, app, ...),
+    4. the literal ``{{name}}`` token.
 
-    Step 3 is the deliberate "nothing is silently lost" behaviour: an unfilled
-    slot with no default stays visible in the pasted text so it can be finished
-    in the destination app.
+    ``resolve`` is optional and injected rather than imported, so this module
+    stays free of Qt and Win32 (see :mod:`pcc.context`). It comes *after* the
+    default deliberately: a hand-written ``{{date|2024-01}}`` keeps its default,
+    and nothing anyone already wrote changes meaning.
+
+    Step 4 is the deliberate "nothing is silently lost" behaviour: an unfilled
+    slot with no default -- or a magic slot whose source is empty -- stays
+    visible in the pasted text so it can be finished in the destination app.
     """
     values = values or {}
 
@@ -143,6 +153,10 @@ def render(body: str, values: dict[str, str] | None = None) -> str:
         default, _ = _split_tail(match.group(2))
         if default:
             return default
+        if resolve is not None:
+            resolved = resolve(name)
+            if resolved:
+                return resolved
         return "{{" + name + "}}"
 
     return PLACEHOLDER_RE.sub(substitute, body)

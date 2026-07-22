@@ -31,12 +31,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import placement, spell, store, winapi
+from .. import context, placement, spell, store, winapi
+from ..context import is_magic
 from ..model import Library, Tab, Template, new_id, render
+from ..usage import UsageStore
 from ..search import search as run_search
 from . import spellcheck
 from .editor import EditorPanel
-from .fill import FillPanel
+from .fill import PREFILL_SLOTS, FillPanel
 from .grid import TileGrid
 from .schemes import colour_tokens
 from .settings_panel import SettingsPanel
@@ -94,7 +96,9 @@ class PaletteWindow(QWidget):
     #: the shadow's reach keeps every damaged rect inside the window.
     SHADOW_MARGIN = 30
 
-    def __init__(self, library: Library, settings: dict) -> None:
+    def __init__(
+        self, library: Library, settings: dict, usage: "UsageStore | None" = None
+    ) -> None:
         super().__init__(
             None,
             Qt.WindowType.Tool
@@ -103,6 +107,10 @@ class PaletteWindow(QWidget):
         )
         self.library = library
         self.settings = settings
+        # Frecency / slot-memory. Injected so tests keep it in a tmp dir; in
+        # production it lives beside settings in %APPDATA%\PCC, never in the
+        # (possibly git-tracked) library folder.
+        self.usage = usage if usage is not None else UsageStore(store.APP_DIR / "usage.json")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowTitle("PCC")
 
@@ -115,11 +123,19 @@ class PaletteWindow(QWidget):
         #: here so our own writes do not come back as an external change.
         self.before_save: Callable[[], None] = lambda: None
 
+        self._fill_template: Template | None = None
         self._build_ui()
         self._wire()
         self._apply_spellcheck()
         self.refresh_tabs()
         self._resize_for(QApplication.primaryScreen())
+
+        # Usage is flushed off a debounce, never on the keystroke that dirtied
+        # it: a paste must not wait on a disk write. aboutToQuit flushes the
+        # tail (wired in __main__).
+        self._usage_timer = QTimer(self)
+        self._usage_timer.setSingleShot(True)
+        self._usage_timer.timeout.connect(self.usage.flush)
 
     # --- construction -------------------------------------------------------
 
@@ -198,7 +214,7 @@ class PaletteWindow(QWidget):
         self.search.textChanged.connect(self._on_search_changed)
         self.tabs.changed.connect(lambda _: self.refresh_grid())
         self.grid.activated.connect(self._activate)
-        self.fill.submitted.connect(self.paste_text)
+        self.fill.submitted.connect(self._on_fill_submitted)
         self.fill.cancelled.connect(lambda: self._go_to_grid())
         self.editor.saved.connect(self._on_editor_saved)
         self.editor.cancelled.connect(lambda: self._go_to_grid())
@@ -254,7 +270,11 @@ class PaletteWindow(QWidget):
     def refresh_grid(self, keep_id: str | None = None) -> None:
         query = self.search.text().strip()
         if query:
-            hits = run_search(query, self.library.tabs)
+            # Frecency nudges the ranking so the template you keep reaching for
+            # floats up among equally-good matches -- capped, so it never beats a
+            # title-prefix hit. Keyed to the app you summoned PCC over.
+            bonus = self.usage.bonus_fn(self._current_app())
+            hits = run_search(query, self.library.tabs, bonus=bonus)
             entries = [(hit.tab, hit.template) for hit in hits]
             self.grid.populate(entries, show_tab_hints=True, keep_id=keep_id)
         else:
@@ -267,12 +287,30 @@ class PaletteWindow(QWidget):
 
     def reload_library(self) -> None:
         """Re-read templates.json after an external edit."""
+        before = self.library
         try:
             self.library = store.load_library(store.library_path(self.settings))
         except Exception:
             return
         self.refresh_tabs(keep_index=min(self.tabs.index, max(0, len(self.library.tabs) - 1)))
-        self._show_toast("RELOADED")
+        self._show_toast(self._reload_summary(before, self.library))
+
+    @staticmethod
+    def _reload_summary(before: Library, after: Library) -> str:
+        """``+3 ~1 -0`` -- what a hand-edit actually changed, so the file-watcher
+        toast confirms the edit landed without opening anything."""
+        old = {t.id: t for _tab, t in before.iter_all()}
+        new = {t.id: t for _tab, t in after.iter_all()}
+        added = len(new.keys() - old.keys())
+        removed = len(old.keys() - new.keys())
+        changed = sum(
+            1
+            for tid in old.keys() & new.keys()
+            if (old[tid].title, old[tid].body) != (new[tid].title, new[tid].body)
+        )
+        if not (added or removed or changed):
+            return "RELOADED"
+        return f"+{added} ~{changed} -{removed}"
 
     def reload_settings(self) -> None:
         """Re-read settings.json and restyle in place.
@@ -530,18 +568,70 @@ class PaletteWindow(QWidget):
                 lambda: winapi.clipboard_set_text(prior),
             )
 
+    def _resolver_for(self, template: Template) -> "tuple[object, list, str | None]":
+        """Build the magic-slot resolver, CONTEXT items and prefill for ``template``.
+
+        The clipboard is read at most once, and only when a magic slot or a
+        prefill-worthy input actually wants it -- this runs after the user has
+        already chosen, never on the trigger hot path.
+        """
+        input_slots = [s for s in template.slots if not is_magic(s.name)]
+        magic_names = [s.name for s in template.slots if is_magic(s.name)]
+        prefill_candidate = any(
+            not s.has_options and s.name.lower() in PREFILL_SLOTS for s in input_slots
+        )
+        clip = (
+            (winapi.clipboard_get_text() or "")
+            if (magic_names or prefill_candidate)
+            else None
+        )
+        env = context.ResolveEnv(target_hwnd=self._target_hwnd, clipboard=clip)
+        resolve = context.make_resolver(env)
+        items = context.context_items(magic_names, env)
+        prefill = clip if prefill_candidate else None
+        return resolve, items, prefill, input_slots
+
+    def _current_app(self) -> str | None:
+        try:
+            return winapi.process_name(self._target_hwnd) or None
+        except Exception:
+            return None
+
+    def _record_use(self, template: Template) -> None:
+        self.usage.record_use(template.id, self._current_app())
+        self._usage_timer.start(5000)
+
     def _activate(self, template: Template) -> None:
-        if template.has_slots:
-            self.fill.load(template)
-            self._set_page(PAGE_FILL)
-            self.fill.focus_first()
-        else:
-            self.paste_text(render(template.body))
+        resolve, items, prefill, input_slots = self._resolver_for(template)
+        # A template whose only slots are magic ({{clipboard}}, {{date}}...) has
+        # nothing to type, so skip the fill panel entirely -- copy, summon, done.
+        if not input_slots:
+            self._record_use(template)
+            self.paste_text(render(template.body, resolve=resolve))
+            return
+        recall = {s.name: self.usage.slot_value(template.id, s.name) for s in input_slots}
+        self._fill_template = template
+        self.fill.load(
+            template, resolve=resolve, context_items=items, prefill=prefill, recall=recall
+        )
+        self._set_page(PAGE_FILL)
+        self.fill.focus_first()
+
+    def _on_fill_submitted(self, text: str) -> None:
+        """A filled template was accepted: bank the use and remember the slots."""
+        template = self._fill_template
+        if template is not None:
+            self._record_use(template)
+            for name, value in self.fill.values().items():
+                self.usage.record_slot(template.id, name, value)
+        self.paste_text(text)
 
     def _paste_raw(self) -> None:
         template = self.grid.current
         if template is not None:
-            self.paste_text(render(template.body))
+            resolve, _items, _prefill, _inputs = self._resolver_for(template)
+            self._record_use(template)
+            self.paste_text(render(template.body, resolve=resolve))
 
     # --- pages --------------------------------------------------------------
 
