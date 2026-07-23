@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Personal AutoHotkey config -- may hold machine-specific / sensitive settings.
+scripts/a001.ahk
+
 # Spike harness output (screenshots, logs, captured paste text).
 spike/*.png
 spike/*.log
