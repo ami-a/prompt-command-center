@@ -33,6 +33,7 @@ Then reload AutoHotkey and press **CapsLock+Space**.
 | Key | Action |
 |---|---|
 | `CapsLock+Space` | Show the palette |
+| `F1` | **All shortcuts** — the full list, on its own page (the footer only shows this) |
 | *type* | Fuzzy-filter across **all** tabs; top hit auto-selected |
 | `↑ ↓ ← →` | Move between tiles |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |

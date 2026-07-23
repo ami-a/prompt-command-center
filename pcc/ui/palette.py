@@ -43,51 +43,16 @@ from .fill import PREFILL_SLOTS, FillPanel
 from .grid import TileGrid
 from .schemes import colour_tokens
 from .settings_panel import SettingsPanel
+from .shortcuts import ShortcutsPage
 from .tabstrip import TabStrip
 from .theme import build_stylesheet
 
-PAGE_GRID, PAGE_FILL, PAGE_EDITOR, PAGE_SETTINGS = 0, 1, 2, 3
+PAGE_GRID, PAGE_FILL, PAGE_EDITOR, PAGE_SETTINGS, PAGE_SHORTCUTS = 0, 1, 2, 3, 4
 
-HINTS = {
-    PAGE_GRID: (
-        "<b>↑↓←→</b> move · <b>type</b> filter · <b>⏎</b> paste · <b>^Space</b> mark · "
-        "<b>^N</b> new · <b>F2</b> edit · <b>^Z</b> undo · <b>^H</b> health · "
-        "<b>Esc</b> hide"
-    ),
-    PAGE_FILL: (
-        "<b>⇥/⇧⇥</b> next slot · <b>←→</b> option · <b>type</b> your own · "
-        "<b>^P</b> full preview · <b>⇧⏎</b> newline · <b>⏎</b> paste · <b>Esc</b> back"
-    ),
-    PAGE_EDITOR: (
-        "<b>⇥</b> next field · <b>^S</b> save · <b>^.</b> fix spelling · "
-        "<b>Esc</b> cancel"
-    ),
-    PAGE_SETTINGS: (
-        "<b>↑↓</b> setting · <b>←→</b> change · <b>PgUp/PgDn</b> ×5 · "
-        "<b>⏎</b> save · <b>Esc</b> revert"
-    ),
-}
-
-#: Scaffolding decay: once you have used a page enough, the full hint bar is a
-#: reminder you stopped reading in week one and are now paying screen space for.
-#: So it shrinks to the essentials, then to almost nothing, as competence grows.
-SHORT_HINTS = {
-    PAGE_GRID: "<b>type</b> filter · <b>⏎</b> paste · <b>^Space</b> mark · <b>Esc</b> hide",
-    PAGE_FILL: "<b>⇥</b> slot · <b>⏎</b> paste · <b>Esc</b> back",
-    PAGE_EDITOR: "<b>^S</b> save · <b>Esc</b> cancel",
-    PAGE_SETTINGS: "<b>↑↓←→</b> edit · <b>⏎</b> save · <b>Esc</b> revert",
-}
-MINIMAL_HINTS = {
-    PAGE_GRID: "<b>Esc</b>",
-    PAGE_FILL: "<b>⏎</b> · <b>Esc</b>",
-    PAGE_EDITOR: "<b>^S</b> · <b>Esc</b>",
-    PAGE_SETTINGS: "<b>⏎</b> · <b>Esc</b>",
-}
-PAGE_NAMES = {PAGE_GRID: "grid", PAGE_FILL: "fill", PAGE_EDITOR: "editor", PAGE_SETTINGS: "settings"}
-
-#: Use counts at which a page's hint bar steps down a tier.
-HINT_FAMILIAR = 30
-HINT_EXPERT = 100
+#: The footer no longer spells out each page's keys -- that was scaffolding that
+#: turns to noise once the keys are learned. It points at the one page that has
+#: the full list instead (F1), shown identically everywhere.
+FOOTER_HINT = "<b>F1</b> shortcuts"
 
 
 class PaletteWindow(QWidget):
@@ -212,10 +177,12 @@ class PaletteWindow(QWidget):
         self.fill = FillPanel()
         self.editor = EditorPanel()
         self.settings_panel = SettingsPanel()
+        self.shortcuts_page = ShortcutsPage()
         self.stack.addWidget(self.grid)
         self.stack.addWidget(self.fill)
         self.stack.addWidget(self.editor)
         self.stack.addWidget(self.settings_panel)
+        self.stack.addWidget(self.shortcuts_page)
         root.addWidget(self.stack, 1)
 
         footer = QHBoxLayout()
@@ -256,6 +223,7 @@ class PaletteWindow(QWidget):
         self.settings_panel.changed.connect(self._on_setting_changed)
         self.settings_panel.saved.connect(self._save_settings)
         self.settings_panel.cancelled.connect(self._revert_settings)
+        self.shortcuts_page.closed.connect(self._go_to_grid)
 
     def _apply_shadow_colour(self) -> None:
         """Re-tint the drop shadow for the current scheme."""
@@ -838,25 +806,17 @@ class PaletteWindow(QWidget):
 
     # --- pages --------------------------------------------------------------
 
-    def _hint_for(self, page: int) -> str:
-        """The hint bar for ``page``, faded to match how well it is known."""
-        count = self.usage.page_count(PAGE_NAMES.get(page, str(page)))
-        if count >= HINT_EXPERT:
-            return MINIMAL_HINTS[page]
-        if count >= HINT_FAMILIAR:
-            return SHORT_HINTS[page]
-        return HINTS[page]
+    def _show_shortcuts(self) -> None:
+        self._set_page(PAGE_SHORTCUTS)
+        self.shortcuts_page.setFocus()
 
     def _set_page(self, page: int) -> None:
-        # Record a page as "used" only on a real transition into it, so the many
-        # internal _set_page(GRID) calls per summon do not inflate the count.
-        if page != self.stack.currentIndex():
-            self.usage.record_page(PAGE_NAMES.get(page, str(page)))
-            self._usage_timer.start(5000)
         self.stack.setCurrentIndex(page)
-        self.hints.setText(self._hint_for(page))
-        self.search.setVisible(page == PAGE_GRID)
-        self.tabs.setVisible(page == PAGE_GRID)
+        # One footer everywhere: it only ever points at the shortcuts page.
+        self.hints.setText(FOOTER_HINT)
+        on_grid = page == PAGE_GRID
+        self.search.setVisible(on_grid)
+        self.tabs.setVisible(on_grid)
         # Hiding widgets on a translucent frameless window leaves their pixels
         # behind: the damaged region is not always propagated to the layered
         # surface, so the search box and tab strip stayed painted over the fill
@@ -1149,6 +1109,8 @@ class PaletteWindow(QWidget):
             return self.editor.handle_key(event)
         if page == PAGE_SETTINGS:
             return self.settings_panel.handle_key(event)
+        if page == PAGE_SHORTCUTS:
+            return self.shortcuts_page.handle_key(event)
         return self._handle_grid_key(event)
 
     def _handle_grid_key(self, event) -> bool:
@@ -1238,6 +1200,10 @@ class PaletteWindow(QWidget):
             return True
         if control and key == Qt.Key.Key_Z:
             self._undo()
+            return True
+        # F1 opens the full shortcuts list.
+        if key == Qt.Key.Key_F1:
+            self._show_shortcuts()
             return True
         # Ctrl+H opens the library health check.
         if control and key == Qt.Key.Key_H:

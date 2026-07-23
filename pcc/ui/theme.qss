@@ -250,6 +250,21 @@ QLineEdit#Field:focus, QPlainTextEdit#Field:focus {
     letter-spacing: 0.3px;
 }
 
+/* The shortcuts page (F1): keys in the accent, descriptions muted, so the eye
+   scans the left column of chords and reads across only when it needs to. */
+#ShortcutKey {
+    font-family: $FONT_FAMILY;
+    font-size: ${FS_BODY}px;
+    font-weight: 600;
+    color: ${ACCENT};
+}
+
+#ShortcutDesc {
+    font-family: $BODY_FONT_FAMILY;
+    font-size: ${FS_BODY}px;
+    color: ${MUTED};
+}
+
 /* --- settings rows ------------------------------------------------------- */
 
 #SettingRow {

@@ -458,16 +458,14 @@ class TestCare:
         palette._delete_template()
         assert called == []
 
-    def test_hints_fade_with_familiarity(self, palette):
-        from pcc.ui.palette import HINTS, MINIMAL_HINTS, PAGE_FILL, SHORT_HINTS
+    def test_footer_only_points_at_the_shortcuts_page(self, palette):
+        from pcc.ui.palette import FOOTER_HINT, PAGE_FILL, PAGE_GRID
 
-        assert palette._hint_for(PAGE_FILL) == HINTS[PAGE_FILL]
-        for _ in range(30):
-            palette.usage.record_page("fill")
-        assert palette._hint_for(PAGE_FILL) == SHORT_HINTS[PAGE_FILL]
-        for _ in range(100):
-            palette.usage.record_page("fill")
-        assert palette._hint_for(PAGE_FILL) == MINIMAL_HINTS[PAGE_FILL]
+        palette._set_page(PAGE_GRID)
+        assert palette.hints.text() == FOOTER_HINT
+        # ...and the same on every other page -- no per-page hint bar any more.
+        palette._set_page(PAGE_FILL)
+        assert palette.hints.text() == FOOTER_HINT
 
     def test_health_report_summarises_findings(self, palette):
         from pcc.model import Template
@@ -485,6 +483,44 @@ class TestCare:
         assert "…" in palette.fill.preview.text()          # collapsed by default
         palette.fill.toggle_full_preview()
         assert palette.fill.preview.text() == body          # full, untruncated
+
+
+class TestShortcutsPage:
+    """F1 opens the cheat sheet; Esc/F1 closes it back to the grid."""
+
+    def test_f1_opens_the_shortcuts_page(self, palette):
+        from pcc.ui.palette import PAGE_SHORTCUTS
+
+        press(palette, Qt.Key.Key_F1)
+        assert palette.stack.currentIndex() == PAGE_SHORTCUTS
+
+    def test_esc_returns_to_the_grid(self, palette):
+        from pcc.ui.palette import PAGE_GRID, PAGE_SHORTCUTS
+
+        press(palette, Qt.Key.Key_F1)
+        assert palette.stack.currentIndex() == PAGE_SHORTCUTS
+        palette.shortcuts_page.handle_key(
+            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
+        )
+        assert palette.stack.currentIndex() == PAGE_GRID
+
+    def test_f1_again_closes_it(self, palette):
+        from pcc.ui.palette import PAGE_GRID
+
+        press(palette, Qt.Key.Key_F1)
+        palette.shortcuts_page.handle_key(
+            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_F1, Qt.KeyboardModifier.NoModifier)
+        )
+        assert palette.stack.currentIndex() == PAGE_GRID
+
+    def test_every_binding_in_the_code_grammar_is_listed(self):
+        # A light guard that the cheat sheet does not drift: the keys we document
+        # should at least mention the headline actions.
+        from pcc.ui.shortcuts import SHORTCUTS
+
+        text = " ".join(keys + " " + desc for _s, rows in SHORTCUTS for keys, desc in rows)
+        for token in ("CapsLock+Space", "Ctrl+Space", "Alt+Enter", "F1", "Ctrl+Z", "Ctrl+H"):
+            assert token in text
 
 
 class TestChoiceSlots:
