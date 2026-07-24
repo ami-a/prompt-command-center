@@ -24,7 +24,7 @@ public class S {
 "@
 [void][S]::SetProcessDPIAware()
 
-$root = "E:\Prpjects\2026\PCC"
+$root = Split-Path -Parent $PSScriptRoot
 $hostWin = [S]::FindWindow([NullString]::Value, "PCC_IPC_HOST")
 if ($hostWin -eq 0) { Write-Output "PCC is not running"; exit 1 }
 

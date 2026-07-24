@@ -2,7 +2,28 @@
 name = "pcc"
 version = "1.0.0"
 description = "Prompt Command Center — a keyboard-first prompt template palette for Windows"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+keywords = ["prompt", "palette", "launcher", "templates", "windows", "autohotkey", "productivity", "qt", "pyside6"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Utilities",
+    "Topic :: Text Editors :: Text Processing",
+]
+
+[project.urls]
+Homepage = "https://github.com/<OWNER>/pcc"
+Repository = "https://github.com/<OWNER>/pcc"
+Issues = "https://github.com/<OWNER>/pcc/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,6 +1,6 @@
 # PCC end-to-end GUI verification.
 #
-#   powershell -ExecutionPolicy Bypass -File E:\Prpjects\2026\PCC\scripts\verify.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\verify.ps1
 #
 # Requires an UNLOCKED, interactive session: nothing can take the foreground,
 # read the screen, or receive synthetic keystrokes while Windows is locked.

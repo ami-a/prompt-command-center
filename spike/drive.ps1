@@ -31,7 +31,7 @@ public class D {
 "@
 [void][D]::SetProcessDPIAware()
 
-$root = "E:\Prpjects\2026\PCC"
+$root = Split-Path -Parent $PSScriptRoot
 $py = "$root\.venv\Scripts\python.exe"
 $received = "$root\spike\received.txt"
 

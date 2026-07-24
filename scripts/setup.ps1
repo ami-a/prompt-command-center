@@ -1,9 +1,16 @@
 # PCC installer: venv, dependencies, and AutoHotkey wiring.
 # Safe to re-run; every step is idempotent and nothing is overwritten silently.
+#
+#   powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+#
+# -BasePython  interpreter to build the venv from  (default: the `py -3` launcher)
+# -AhkScript   your AutoHotkey script to add the trigger to. If omitted, setup
+#              prints the one `#Include` line to paste into your own script.
+# -SkipAhk     skip AutoHotkey wiring entirely.
 [CmdletBinding()]
 param(
-    [string]$BasePython = "D:\Python\Python3116\python.exe",
-    [string]$AhkScript  = "E:\Prpjects\2023\ShortCutKeyboard\a001.ahk",
+    [string]$BasePython = "",
+    [string]$AhkScript  = "",
     [switch]$SkipAhk
 )
 
@@ -14,8 +21,9 @@ $py   = Join-Path $venv "Scripts\python.exe"
 
 Write-Host "PCC setup -- $root" -ForegroundColor Cyan
 
-if (-not (Test-Path $BasePython)) {
-    # Fall back to the launcher if the recorded interpreter has moved.
+if (-not $BasePython -or -not (Test-Path $BasePython)) {
+    # Resolve the interpreter from the standard `py` launcher rather than any
+    # machine-specific path, so setup works on a fresh clone.
     $BasePython = (& py -3 -c "import sys; print(sys.executable)")
     Write-Host "  base python resolved via py launcher: $BasePython"
 }
@@ -40,7 +48,13 @@ if ($LASTEXITCODE -ne 0) { throw "tests failed" }
 # --- AutoHotkey wiring ------------------------------------------------------
 if (-not $SkipAhk) {
     $include = "#Include $root\scripts\pcc.ahk"
-    if (-not (Test-Path $AhkScript)) {
+    if (-not $AhkScript) {
+        # No target script given: show the one line to add. This is the normal
+        # path on a fresh clone -- we do not guess where your AHK config lives.
+        Write-Host "  AutoHotkey: add this line to your own .ahk script, then reload AHK:" -ForegroundColor Yellow
+        Write-Host "      $include" -ForegroundColor White
+        Write-Host "      (or re-run with -AhkScript <path-to-your.ahk> to wire it automatically)" -ForegroundColor DarkGray
+    } elseif (-not (Test-Path $AhkScript)) {
         Write-Host "  ! AHK script not found at $AhkScript -- add this line yourself:" -ForegroundColor Red
         Write-Host "      $include"
     } elseif ((Get-Content $AhkScript -Raw) -match [regex]::Escape("scripts\pcc.ahk")) {

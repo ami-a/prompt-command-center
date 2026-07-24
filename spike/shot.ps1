@@ -1,5 +1,5 @@
 # Capture a window by title to a PNG so the UI can be inspected.
-param([string]$Title = "PCC", [string]$Out = "E:\Prpjects\2026\PCC\spike\shot.png")
+param([string]$Title = "PCC", [string]$Out = "$PSScriptRoot\shot.png")
 
 Add-Type -AssemblyName System.Drawing
 Add-Type @"

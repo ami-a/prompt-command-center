@@ -20,7 +20,7 @@ public class K {
 "@
 [void][K]::SetProcessDPIAware()
 
-$root = "E:\Prpjects\2026\PCC"
+$root = Split-Path -Parent $PSScriptRoot
 $py = "$root\.venv\Scripts\python.exe"
 $KEYUP = 0x2
 $VK_CAPITAL = 0x14

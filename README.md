@@ -1,32 +1,141 @@
-# PCC — Prompt Command Center
+<h1 align="center">PCC — Prompt Command Center</h1>
 
-A keyboard-first prompt palette for Windows. Press **CapsLock+Space** anywhere,
-pick a template with arrows or by typing, hit **Enter**, and it pastes straight
-back into whatever text box you were in.
+<p align="center">
+  A keyboard-first prompt palette for Windows. Press <b>CapsLock+Space</b> anywhere,
+  pick a template, hit <b>Enter</b> — it pastes straight back into whatever text box
+  you were in.
+</p>
 
-```
-┌─ PCC ─────────────────────────────────────────────┐
-│  PCC   [ type to filter…                       ]  │
-│  Coding 1   Writing 2   Thinking 3                │
-│  ─────────                                        │
-│  ▸ Refactor for readability 3⬚   Explain this…    │
-│    Refactor the following Python  Explain what…   │
-│                                                   │
-│  ↑↓←→ move · ⏎ paste · ^⏎ raw · Esc hide          │
-└───────────────────────────────────────────────────┘
-```
+<p align="center">
+  <a href="https://github.com/&lt;OWNER&gt;/pcc/actions/workflows/ci.yml"><img src="https://github.com/&lt;OWNER&gt;/pcc/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform: Windows">
+  <img src="https://img.shields.io/badge/tests-489%20passing-brightgreen" alt="489 tests">
+</p>
+
+<p align="center">
+  <img src="assets/palette.png" width="760" alt="The PCC palette summoned over the desktop, showing coding templates in a grid.">
+</p>
+
+PCC is a launcher for the prompts you reuse. It lives in the system tray and appears
+the instant you summon it — a cold Python+Qt start would cost 400–1200 ms, so the app
+stays resident and a single keystroke shows it in about 30 ms. You feed prompts into an
+AI chat, a code editor, a terminal, an email — anywhere you can paste. Templates carry
+fill-in slots and **magic slots** that pull from your clipboard, selection, and
+environment, so a two-line template becomes hundreds of finished prompts.
+
+- **Fast** — resident process, message-triggered, ~30 ms to show; paste is O(1) via the clipboard.
+- **Slots & magic** — `{{name}}` fields, `{{name|a|b|c}}` choices, and `{{clipboard}}` / `{{selection}}` / `{{app}}` auto-filled from context.
+- **Composition** — stack templates, layer reusable modifiers, and `{{>include}}` shared fragments.
+- **Memory & health** — frecency ranks what you use per app; a health check flags empty, duplicate, broken, and never-used templates.
+- **Themeable** — seven colour schemes, each derived from three hex codes and WCAG-contrast tested; live preview while you edit.
+- **Careful** — undo on every destructive edit, on-disk snapshots, and an inline spell-checker that leaves your code alone.
+
+## Table of contents
+
+- [Screenshots](#screenshots)
+- [Prerequisites](#prerequisites)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Keys](#keys)
+- [Templates](#templates)
+- [Spelling](#spelling)
+- [Appearance](#appearance)
+- [How it works](#how-it-works)
+- [Project layout](#project-layout)
+- [Development](#development)
+- [Contributing](#contributing)
+- [Known limitations](#known-limitations)
+- [License](#license)
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/fill-panel.png" alt="The fill panel: choice chips for language and goal, a code field, and a live preview.">
+      <p align="center"><em>The fill panel — choice chips, free text, live preview with a token estimate.</em></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/settings.png" alt="The settings panel: colour scheme, font, size, columns, window dimensions.">
+      <p align="center"><em>Settings (<code>Ctrl+,</code>) — every change previews live in the panel you are editing.</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/shortcuts.png" alt="The shortcuts page opened with F1, listing every key grouped by context.">
+      <p align="center"><em>Every shortcut on one page (<code>F1</code>).</em></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/palette.png" alt="The palette grid with tabs and templates.">
+      <p align="center"><em>The palette — tabs, fuzzy filter, the top hit auto-selected.</em></p>
+    </td>
+  </tr>
+</table>
+
+## Prerequisites
+
+- **Windows 10 or 11.** PCC is Windows-only by design — it leans on Win32 foreground
+  handling, the Windows clipboard, `SendInput`, and the built-in Windows spell-checker.
+- **Python 3.11 or newer**, reachable through the [`py` launcher](https://docs.python.org/3/using/windows.html#python-launcher-for-windows) (the standard Windows installer adds it).
+- **[AutoHotkey v1.1](https://www.autohotkey.com/)** — provides the global `CapsLock+Space` hotkey.
 
 ## Install
 
+Clone the repository, then run the installer from the repo root:
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File E:\Prpjects\2026\PCC\scripts\setup.ps1
+git clone https://github.com/<OWNER>/pcc.git
+cd pcc
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ```
 
-Creates the venv, installs dependencies, runs the tests, adds
-`#Include …\scripts\pcc.ahk` to `a001.ahk` (with a backup), and drops a Startup
-shortcut. Re-running it is safe.
+The installer is idempotent — re-running it is safe. It:
 
-Then reload AutoHotkey and press **CapsLock+Space**.
+1. creates a `.venv` and installs the pinned dependencies,
+2. verifies the imports and runs the test suite,
+3. wires the `CapsLock+Space` trigger into your AutoHotkey script (see below), and
+4. drops a Startup shortcut so PCC launches with Windows.
+
+**AutoHotkey wiring.** If you already have an AutoHotkey script, point the installer at
+it and it adds the trigger for you (keeping a timestamped backup):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -AhkScript C:\path\to\your.ahk
+```
+
+Without `-AhkScript`, setup prints the one line to add to your own script yourself:
+
+```autohotkey
+#Include <path-to-repo>\scripts\pcc.ahk
+```
+
+`pcc.ahk` derives the repo location from its own path, so the `#Include` works from
+wherever you cloned. Reload AutoHotkey afterwards for `CapsLock+Space` to take effect.
+
+<details>
+<summary><b>Manual install</b> (no installer)</summary>
+
+```powershell
+py -3 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pytest tests        # optional: confirm it's healthy
+
+# Add the trigger to your AutoHotkey script, then reload AHK:
+#   #Include <path-to-repo>\scripts\pcc.ahk
+
+.venv\Scripts\pythonw -m pcc                 # start it (pythonw = no console)
+```
+
+</details>
+
+## Quick start
+
+1. Press **CapsLock+Space** anywhere. The palette appears over the app you were in.
+2. Arrow to a template, or just **type** to fuzzy-filter — the top hit is auto-selected.
+3. Press **Enter**. If the template has slots you get the fill panel; otherwise it
+   pastes straight into the box you came from. Press **F1** any time for the full key list.
 
 ## Keys
 
@@ -138,18 +247,9 @@ library accumulates. These live in `%APPDATA%\PCC\usage.json`, kept out of
 
 ### The fill panel
 
-```
-┌─ PCC ─────────────────────────────────────────────────┐
-│ Refactor for readability                              │
-│ LANGUAGE                                              │
-│ [ Python ] [ TypeScript ] [ Go ] [ Rust ] ( custom… ) │
-│ GOAL                                                  │
-│ [ readability ] [ performance ] ( custom… )           │
-│ PREVIEW                                               │
-│ Refactor the following Python code for readability…   │
-│ ⇥/⇧⇥ next slot · ←→ option · type your own · ⏎ paste  │
-└───────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="assets/fill-panel.png" width="640" alt="The fill panel with language and goal choice chips, a code field, and a live preview.">
+</p>
 
 `←→` walks the options and selects as it goes — there is no separate confirm
 step, the same way `←→` edits a row in the settings panel. Options are
@@ -192,18 +292,9 @@ re-scanned, against a per-word cache. Turn it off with `Ctrl+,` → *Spell check
 
 Press **`Ctrl+,`** inside the palette (or tray → *Settings…*).
 
-```
-┌─ PCC ─────────────────────────────────────────────────┐
-│ SETTINGS                                              │
-│ ▸ Colour scheme                        ●●● ‹ Cyber ›  │  ← accent / secondary
-│   the whole palette                                   │    / background dots
-│   Font                          ‹ Cascadia Code ›     │
-│   Font size                              ‹ 13 px ›    │
-│   Body text                          ‹ monospace ›    │
-│   Columns                                    ‹ 3 ›    │
-│ ↑↓ setting · ←→ change · PgUp/PgDn ×5 · ⏎ save · Esc revert │
-└───────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="assets/settings.png" width="640" alt="The settings panel showing colour scheme, font, size, body text, columns, and window size.">
+</p>
 
 `↑↓` picks a setting, `←→` changes it, `PgUp`/`PgDn` steps numbers by five.
 **Every change applies instantly** — the panel you're editing is the preview.
@@ -287,7 +378,7 @@ Three Win32 details do the heavy lifting:
   *sizes* in logical ones; on a 175 % display, scaling both puts the window off
   screen. See `placement.physical_geometry`.
 
-## Layout
+## Project layout
 
 | Path | Role |
 |---|---|
@@ -312,16 +403,17 @@ Three Win32 details do the heavy lifting:
 ## Development
 
 ```powershell
-$py = "E:\Prpjects\2026\PCC\.venv\Scripts\python.exe"
+$py = ".venv\Scripts\python.exe"
 
-& $py -m pytest tests            # 485 unit tests, runs locked/headless
+& $py -m pytest tests            # 489 unit tests, runs locked/headless
 & $py -m pcc --show              # run with a console attached
 $env:PCC_TIMING=1; & $py -m pcc  # log show latency to stderr
 ```
 
-Widget tests use Qt's `offscreen` platform plugin, so grid navigation, key
+Widget tests use Qt's `offscreen` platform plugin (set in
+[tests/conftest.py](tests/conftest.py) at import time), so grid navigation, key
 routing, option chips, fill rendering and authoring are all covered without a
-visible desktop.
+visible desktop — and the same suite runs unchanged on a headless CI runner.
 
 What that *cannot* cover is the Win32 half — taking the foreground, synthesising
 Ctrl+V, and landing text in another process. For that:
@@ -336,9 +428,22 @@ and memory. **It needs an unlocked, interactive session** — Windows refuses
 foreground changes, screen reads and synthetic input while locked, so the script
 detects that and exits rather than reporting false failures.
 
+To refresh the screenshots in this README, start PCC and run
+[scripts/shot.ps1](scripts/shot.ps1) (it captures the palette window by title,
+DPI-correct, into `assets/`).
+
 `spike/` holds the lower-level harness used to prove the trigger→focus→paste
 chain in isolation; `spike/host.py` is a standalone reproduction if that path
 ever regresses.
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+- Run the suite before opening a PR: `.venv\Scripts\python -m pytest tests` (headless, no display needed).
+- Keep it **portable** — nothing machine-specific. Paths are derived, not hardcoded; if you touch a script, make sure it still works from a fresh clone at any location.
+- The `SHORTCUTS` table in [pcc/ui/shortcuts.py](pcc/ui/shortcuts.py) is the single source of truth for keybindings — update it (and the Keys table above) together.
+- New colour schemes are three hex codes in [pcc/ui/schemes.py](pcc/ui/schemes.py); the suite checks WCAG contrast, so run it.
 
 ## Known limitations
 
@@ -350,3 +455,9 @@ ever regresses.
 - **Clipboard restore is text-only.** If the clipboard held an image or files,
   PCC leaves the pasted text there rather than replacing your data with an
   empty string.
+
+## License
+
+PCC is free software, licensed under the **GNU General Public License v3.0 (or later)**.
+See [LICENSE](LICENSE) for the full text. You may use, study, share, and modify it;
+derivative works must remain under the GPL.
