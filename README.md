@@ -1,3 +1,5 @@
+<a id="top"></a>
+
 <h1 align="center">PCC — Prompt Command Center</h1>
 
 <p align="center">
@@ -7,15 +9,27 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/&lt;OWNER&gt;/pcc/actions/workflows/ci.yml"><img src="https://github.com/&lt;OWNER&gt;/pcc/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
-  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform: Windows">
-  <img src="https://img.shields.io/badge/tests-489%20passing-brightgreen" alt="489 tests">
+  <a href="https://github.com/&lt;OWNER&gt;/pcc/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/&lt;OWNER&gt;/pcc/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=CI" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue?style=flat-square" alt="License: GPL v3"></a>
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?style=flat-square&logo=windows11&logoColor=white" alt="Platform: Windows">
+  <img src="https://img.shields.io/badge/Qt-PySide6-41CD52?style=flat-square&logo=qt&logoColor=white" alt="Built with PySide6">
+  <img src="https://img.shields.io/badge/tests-489%20passing-brightgreen?style=flat-square" alt="489 tests passing">
+  <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs welcome"></a>
+</p>
+
+<p align="center">
+  <a href="#install"><b>Install</b></a> ·
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#keys"><b>Shortcuts</b></a> ·
+  <a href="#templates"><b>Templates</b></a> ·
+  <a href="#how-it-works"><b>How it works</b></a>
 </p>
 
 <p align="center">
   <img src="assets/palette.png" width="760" alt="The PCC palette summoned over the desktop, showing coding templates in a grid.">
+  <br>
+  <em>Summon it anywhere with <b>CapsLock+Space</b> — filter, pick, paste.</em>
 </p>
 
 PCC is a launcher for the prompts you reuse. It lives in the system tray and appears
@@ -83,7 +97,7 @@ environment, so a two-line template becomes hundreds of finished prompts.
 
 ## Install
 
-Clone the repository, then run the installer from the repo root:
+### 1. Clone and run the installer
 
 ```powershell
 git clone https://github.com/<OWNER>/pcc.git
@@ -91,31 +105,46 @@ cd pcc
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ```
 
-The installer is idempotent — re-running it is safe. It:
+That one command does everything, and it's **idempotent** — re-run it any time. It:
 
 1. creates a `.venv` and installs the pinned dependencies,
 2. verifies the imports and runs the test suite,
-3. wires the `CapsLock+Space` trigger into your AutoHotkey script (see below), and
+3. wires up the `CapsLock+Space` trigger (step 2 below), and
 4. drops a Startup shortcut so PCC launches with Windows.
 
-**AutoHotkey wiring.** If you already have an AutoHotkey script, point the installer at
-it and it adds the trigger for you (keeping a timestamped backup):
+### 2. Enable the hotkey
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -AhkScript C:\path\to\your.ahk
-```
+PCC's global `CapsLock+Space` comes from a one-line AutoHotkey include. You have two options:
 
-Without `-AhkScript`, setup prints the one line to add to your own script yourself:
+- **Let setup wire it for you** — point it at your existing AutoHotkey script and it
+  appends the include, keeping a timestamped backup:
 
-```autohotkey
-#Include <path-to-repo>\scripts\pcc.ahk
-```
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -AhkScript C:\path\to\your.ahk
+  ```
 
-`pcc.ahk` derives the repo location from its own path, so the `#Include` works from
-wherever you cloned. Reload AutoHotkey afterwards for `CapsLock+Space` to take effect.
+- **Add it yourself** — if you run setup without `-AhkScript`, it prints this line for
+  you to paste into any AutoHotkey script:
+
+  ```autohotkey
+  #Include <path-to-repo>\scripts\pcc.ahk
+  ```
+
+`pcc.ahk` figures out the repo location from its own path, so the include works no
+matter where you cloned. **Reload AutoHotkey** afterwards for the hotkey to take effect.
+
+### 3. You're set
+
+Press **CapsLock+Space** — the palette appears. PCC now starts with Windows and lives in
+the tray; right-click the tray icon for *Settings…*, *Reload*, and *Quit*.
+
+> **Nothing happens on CapsLock+Space?** Make sure AutoHotkey is running and was reloaded
+> after adding the include. If the tray icon is missing, start PCC directly with
+> `.venv\Scripts\pythonw -m pcc`. See [Known limitations](#known-limitations) for the
+> elevated-window and locked-session cases.
 
 <details>
-<summary><b>Manual install</b> (no installer)</summary>
+<summary><b>Manual install</b> — without the installer script</summary>
 
 ```powershell
 py -3 -m venv .venv
@@ -461,3 +490,25 @@ Issues and pull requests are welcome.
 PCC is free software, licensed under the **GNU General Public License v3.0 (or later)**.
 See [LICENSE](LICENSE) for the full text. You may use, study, share, and modify it;
 derivative works must remain under the GPL.
+
+<br>
+
+<p align="center">
+  <sub>
+    Built with
+    <a href="https://www.python.org/">Python</a> ·
+    <a href="https://doc.qt.io/qtforpython/">PySide6</a> ·
+    <a href="https://www.autohotkey.com/">AutoHotkey</a> ·
+    <a href="https://github.com/maxbachmann/RapidFuzz">RapidFuzz</a> ·
+    the Win32 API
+  </sub>
+  <br><br>
+  <sub><a href="#top">↑ Back to top</a></sub>
+</p>
+
+<!--
+  Suggested GitHub topics (Settings → About → Topics) for discoverability:
+  prompt-engineering · prompt-manager · launcher · palette · windows · autohotkey
+  pyside6 · qt · productivity · clipboard · keyboard-shortcuts · text-expander · llm
+-->
+
