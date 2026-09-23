@@ -13,8 +13,9 @@ Two decisions shape this panel:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPixmap

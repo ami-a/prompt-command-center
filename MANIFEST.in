@@ -1,0 +1,4 @@
+# The sdist picks up tests/test_*.py on its own but not conftest.py, without
+# which the suite cannot run from an unpacked sdist.
+graft tests
+global-exclude __pycache__ *.py[cod]

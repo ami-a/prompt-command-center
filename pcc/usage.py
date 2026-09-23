@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 #: A use is worth half as much after this long. Two weeks makes "what I've been
 #: doing lately" win without erasing a tool I reach for monthly.

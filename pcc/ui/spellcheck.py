@@ -19,8 +19,8 @@ Two ideas carry the whole feature:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from contextlib import nullcontext
-from typing import Iterator
 from weakref import WeakSet
 
 from PySide6.QtCore import Qt

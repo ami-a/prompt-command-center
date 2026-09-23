@@ -154,7 +154,8 @@ class ShortcutsPage(QWidget):
             bar.setValue(bar.value() - step)
             return True
         if key in (Qt.Key.Key_PageDown, Qt.Key.Key_End):
-            bar.setValue(bar.value() + bar.pageStep() if key == Qt.Key.Key_PageDown else bar.maximum())
+            page_down = key == Qt.Key.Key_PageDown
+            bar.setValue(bar.value() + bar.pageStep() if page_down else bar.maximum())
             return True
         if key in (Qt.Key.Key_PageUp, Qt.Key.Key_Home):
             bar.setValue(bar.value() - bar.pageStep() if key == Qt.Key.Key_PageUp else 0)

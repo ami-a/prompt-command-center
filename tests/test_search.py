@@ -37,7 +37,8 @@ class TestFrecencyBonus:
             ]),
         ]
         neutral = [h.template.id for h in search("review", tabs)]
-        boosted = [h.template.id for h in search("review", tabs, bonus=lambda i: 5.0 if i == "b" else 0.0)]
+        boost_b = lambda i: 5.0 if i == "b" else 0.0  # noqa: E731
+        boosted = [h.template.id for h in search("review", tabs, bonus=boost_b)]
         assert neutral == ["a", "b"]      # library order on a tie
         assert boosted[0] == "b"          # frecency lifts b above the tie
 

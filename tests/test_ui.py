@@ -332,7 +332,9 @@ class TestMemory:
         monkeypatch.setattr(winapi_module(), "clipboard_get_text", lambda: "")
         template = palette.library.tabs[0].templates[2]  # "Write tests", no slots
         palette._activate(template)
-        assert palette.usage.frecency(template.id) == 1.0
+        # approx: the real clock runs between record and read. Python 3.13+ reads
+        # it at sub-microsecond resolution on Windows, so a little decay shows.
+        assert palette.usage.frecency(template.id) == pytest.approx(1.0)
 
     def test_submitting_a_fill_records_use_and_slot(self, palette, monkeypatch):
         monkeypatch.setattr(palette, "paste_text", lambda *_: None)
@@ -341,7 +343,7 @@ class TestMemory:
         palette.fill.load(template)
         palette.fill._fields[0].edit.setPlainText("hi")
         palette._on_fill_submitted("Say hi")
-        assert palette.usage.frecency("pX") == 1.0
+        assert palette.usage.frecency("pX") == pytest.approx(1.0)
         assert palette.usage.slot_value("pX", "greeting") == "hi"
 
     def test_recalled_slot_value_becomes_ghost_text(self, palette):

@@ -9,13 +9,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/&lt;OWNER&gt;/pcc/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/&lt;OWNER&gt;/pcc/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=CI" alt="CI status"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue?style=flat-square" alt="License: GPL v3"></a>
-  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?style=flat-square&logo=windows11&logoColor=white" alt="Platform: Windows">
-  <img src="https://img.shields.io/badge/Qt-PySide6-41CD52?style=flat-square&logo=qt&logoColor=white" alt="Built with PySide6">
-  <img src="https://img.shields.io/badge/tests-489%20passing-brightgreen?style=flat-square" alt="489 tests passing">
-  <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs welcome"></a>
+  <a href="https://github.com/ami-a/prompt-command-center/actions/workflows/ci.yml"><img src="https://github.com/ami-a/prompt-command-center/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pypi.org/project/prompt-command-center/"><img src="https://img.shields.io/pypi/v/prompt-command-center?label=PyPI" alt="PyPI"></a>
+  <a href="https://pypi.org/project/prompt-command-center/"><img src="https://img.shields.io/pypi/pyversions/prompt-command-center?label=Python" alt="Python"></a>
+  <a href="https://pepy.tech/project/prompt-command-center"><img src="https://static.pepy.tech/badge/prompt-command-center" alt="Downloads"></a>
+  <a href="https://hits.sh/github.com/ami-a/prompt-command-center/"><img src="https://hits.sh/github.com/ami-a/prompt-command-center.svg?label=visits" alt="Visits"></a>
+  <a href="https://github.com/ami-a/prompt-command-center/blob/main/LICENSE"><img src="https://img.shields.io/github/license/ami-a/prompt-command-center?label=License" alt="License"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows11&logoColor=white" alt="Platform: Windows">
+  <img src="https://img.shields.io/badge/Qt-PySide6-41CD52?logo=qt&logoColor=white" alt="Built with PySide6">
+  <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs welcome"></a>
 </p>
 
 <p align="center">
@@ -27,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/palette.png" width="760" alt="The PCC palette summoned over the desktop, showing coding templates in a grid.">
+  <img src="https://raw.githubusercontent.com/ami-a/prompt-command-center/main/assets/palette.png" width="760" alt="The PCC palette summoned over the desktop, showing coding templates in a grid.">
   <br>
   <em>Summon it anywhere with <b>CapsLock+Space</b> — filter, pick, paste.</em>
 </p>
@@ -68,21 +70,21 @@ environment, so a two-line template becomes hundreds of finished prompts.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/fill-panel.png" alt="The fill panel: choice chips for language and goal, a code field, and a live preview.">
+      <img src="https://raw.githubusercontent.com/ami-a/prompt-command-center/main/assets/fill-panel.png" alt="The fill panel: choice chips for language and goal, a code field, and a live preview.">
       <p align="center"><em>The fill panel — choice chips, free text, live preview with a token estimate.</em></p>
     </td>
     <td width="50%" valign="top">
-      <img src="assets/settings.png" alt="The settings panel: colour scheme, font, size, columns, window dimensions.">
+      <img src="https://raw.githubusercontent.com/ami-a/prompt-command-center/main/assets/settings.png" alt="The settings panel: colour scheme, font, size, columns, window dimensions.">
       <p align="center"><em>Settings (<code>Ctrl+,</code>) — every change previews live in the panel you are editing.</em></p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/shortcuts.png" alt="The shortcuts page opened with F1, listing every key grouped by context.">
+      <img src="https://raw.githubusercontent.com/ami-a/prompt-command-center/main/assets/shortcuts.png" alt="The shortcuts page opened with F1, listing every key grouped by context.">
       <p align="center"><em>Every shortcut on one page (<code>F1</code>).</em></p>
     </td>
     <td width="50%" valign="top">
-      <img src="assets/palette.png" alt="The palette grid with tabs and templates.">
+      <img src="https://raw.githubusercontent.com/ami-a/prompt-command-center/main/assets/palette.png" alt="The palette grid with tabs and templates.">
       <p align="center"><em>The palette — tabs, fuzzy filter, the top hit auto-selected.</em></p>
     </td>
   </tr>
@@ -100,8 +102,8 @@ environment, so a two-line template becomes hundreds of finished prompts.
 ### 1. Clone and run the installer
 
 ```powershell
-git clone https://github.com/<OWNER>/pcc.git
-cd pcc
+git clone https://github.com/ami-a/prompt-command-center.git
+cd prompt-command-center
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ```
 
@@ -156,6 +158,27 @@ py -3 -m venv .venv
 
 .venv\Scripts\pythonw -m pcc                 # start it (pythonw = no console)
 ```
+
+</details>
+
+<details>
+<summary><b>From PyPI</b> — no clone</summary>
+
+```powershell
+pipx install prompt-command-center   # or: py -m pip install prompt-command-center
+pcc                                  # starts PCC in the tray
+```
+
+Then bind the hotkey in any AutoHotkey script. Running `pcc` again forwards to the
+instance that is already resident, so this one line is the whole trigger:
+
+```autohotkey
+Capslock & Space::Run, pcc
+```
+
+Each press starts a short-lived process that only forwards the message. The
+clone install's `pcc.ahk` posts to the window directly and skips that process, so it is the faster
+trigger.
 
 </details>
 
@@ -277,7 +300,7 @@ library accumulates. These live in `%APPDATA%\PCC\usage.json`, kept out of
 ### The fill panel
 
 <p align="center">
-  <img src="assets/fill-panel.png" width="640" alt="The fill panel with language and goal choice chips, a code field, and a live preview.">
+  <img src="https://raw.githubusercontent.com/ami-a/prompt-command-center/main/assets/fill-panel.png" width="640" alt="The fill panel with language and goal choice chips, a code field, and a live preview.">
 </p>
 
 `←→` walks the options and selects as it goes — there is no separate confirm
@@ -302,7 +325,7 @@ whole interaction. Right-clicking correctly spelled text still gives you the
 usual Cut/Copy/Paste menu.
 
 The checker is the one already built into Windows
-([spell.py](pcc/spell.py) binds it with `ctypes` — no extra package, no
+([spell.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/spell.py) binds it with `ctypes` — no extra package, no
 dictionary to ship), which means it knows the words you have added elsewhere,
 and *Add to dictionary* teaches them to Word and Edge too.
 
@@ -322,7 +345,7 @@ re-scanned, against a per-word cache. Turn it off with `Ctrl+,` → *Spell check
 Press **`Ctrl+,`** inside the palette (or tray → *Settings…*).
 
 <p align="center">
-  <img src="assets/settings.png" width="640" alt="The settings panel showing colour scheme, font, size, body text, columns, and window size.">
+  <img src="https://raw.githubusercontent.com/ami-a/prompt-command-center/main/assets/settings.png" width="640" alt="The settings panel showing colour scheme, font, size, body text, columns, and window size.">
 </p>
 
 `↑↓` picks a setting, `←→` changes it, `PgUp`/`PgDn` steps numbers by five.
@@ -335,7 +358,7 @@ schemes costs nothing.
 `Cyber` · `Synthwave` · `Matrix` · `Amber` · `Ice` · `Void` · `Blood`
 
 Each scheme is defined by only three colours — background, accent, secondary —
-and the other twenty tokens are derived ([schemes.py](pcc/ui/schemes.py)).
+and the other twenty tokens are derived ([schemes.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ui/schemes.py)).
 Surfaces are lifted toward a desaturated tint of the *accent* rather than
 toward neutral grey, which is what makes panels read as part of the theme
 instead of grey boxes on a coloured background. Adding a scheme is three hex
@@ -411,36 +434,38 @@ Three Win32 details do the heavy lifting:
 
 | Path | Role |
 |---|---|
-| [pcc/model.py](pcc/model.py) | Templates, tabs, `{{slot}}` grammar, rendering |
-| [pcc/store.py](pcc/store.py) | Atomic JSON, corruption recovery, file watching |
-| [pcc/winapi.py](pcc/winapi.py) | Foreground capture/restore, clipboard, `SendInput` |
-| [pcc/ipc.py](pcc/ipc.py) | The hidden window AHK posts to |
-| [pcc/placement.py](pcc/placement.py) | Multi-monitor, DPI-aware positioning |
-| [pcc/search.py](pcc/search.py) | Prefix → acronym → subsequence → fuzzy ranking, + frecency |
-| [pcc/context.py](pcc/context.py) | Magic-slot resolvers ({{clipboard}}, {{app}}, …), injected into render |
-| [pcc/usage.py](pcc/usage.py) | Frecency, per-app affinity, slot memory (disposable) |
-| [pcc/compose.py](pcc/compose.py) | Stacking + modifiers, composed at the body level |
-| [pcc/lint.py](pcc/lint.py) | Library health findings (pure) |
-| [pcc/journal.py](pcc/journal.py) | In-session undo ring for destructive edits |
-| [pcc/ui/schemes.py](pcc/ui/schemes.py) | Colour schemes; 3 source colours → 21 derived tokens |
-| [pcc/ui/theme.py](pcc/ui/theme.py) | Resolves `theme.qss` against settings |
-| [pcc/ui/settings_panel.py](pcc/ui/settings_panel.py) | The `Ctrl+,` panel |
-| [pcc/ui/fill.py](pcc/ui/fill.py) | Slot fields, option chips, live preview |
-| [pcc/ui/flow.py](pcc/ui/flow.py) | Wrapping layout used by the option chips |
-| [pcc/ui/](pcc/ui/) | Palette, grid, tiles, editor |
+| [pcc/model.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/model.py) | Templates, tabs, `{{slot}}` grammar, rendering |
+| [pcc/store.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/store.py) | Atomic JSON, corruption recovery, file watching |
+| [pcc/winapi.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/winapi.py) | Foreground capture/restore, clipboard, `SendInput` |
+| [pcc/ipc.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ipc.py) | The hidden window AHK posts to |
+| [pcc/placement.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/placement.py) | Multi-monitor, DPI-aware positioning |
+| [pcc/search.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/search.py) | Prefix → acronym → subsequence → fuzzy ranking, + frecency |
+| [pcc/context.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/context.py) | Magic-slot resolvers ({{clipboard}}, {{app}}, …), injected into render |
+| [pcc/usage.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/usage.py) | Frecency, per-app affinity, slot memory (disposable) |
+| [pcc/compose.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/compose.py) | Stacking + modifiers, composed at the body level |
+| [pcc/lint.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/lint.py) | Library health findings (pure) |
+| [pcc/journal.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/journal.py) | In-session undo ring for destructive edits |
+| [pcc/ui/schemes.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ui/schemes.py) | Colour schemes; 3 source colours → 21 derived tokens |
+| [pcc/ui/theme.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ui/theme.py) | Resolves `theme.qss` against settings |
+| [pcc/ui/settings_panel.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ui/settings_panel.py) | The `Ctrl+,` panel |
+| [pcc/ui/fill.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ui/fill.py) | Slot fields, option chips, live preview |
+| [pcc/ui/flow.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ui/flow.py) | Wrapping layout used by the option chips |
+| [pcc/ui/](https://github.com/ami-a/prompt-command-center/tree/main/pcc/ui/) | Palette, grid, tiles, editor |
 
 ## Development
 
 ```powershell
 $py = ".venv\Scripts\python.exe"
 
-& $py -m pytest tests            # 489 unit tests, runs locked/headless
+& $py -m pip install -e ".[dev]" # editable install + pytest, ruff, build, twine
+& $py -m pytest tests            # full suite, runs locked/headless
+& $py -m ruff check .            # lint, as CI runs it
 & $py -m pcc --show              # run with a console attached
 $env:PCC_TIMING=1; & $py -m pcc  # log show latency to stderr
 ```
 
 Widget tests use Qt's `offscreen` platform plugin (set in
-[tests/conftest.py](tests/conftest.py) at import time), so grid navigation, key
+[tests/conftest.py](https://github.com/ami-a/prompt-command-center/blob/main/tests/conftest.py) at import time), so grid navigation, key
 routing, option chips, fill rendering and authoring are all covered without a
 visible desktop — and the same suite runs unchanged on a headless CI runner.
 
@@ -458,7 +483,7 @@ foreground changes, screen reads and synthetic input while locked, so the script
 detects that and exits rather than reporting false failures.
 
 To refresh the screenshots in this README, start PCC and run
-[scripts/shot.ps1](scripts/shot.ps1) (it captures the palette window by title,
+[scripts/shot.ps1](https://github.com/ami-a/prompt-command-center/blob/main/scripts/shot.ps1) (it captures the palette window by title,
 DPI-correct, into `assets/`).
 
 `spike/` holds the lower-level harness used to prove the trigger→focus→paste
@@ -469,10 +494,11 @@ ever regresses.
 
 Issues and pull requests are welcome.
 
-- Run the suite before opening a PR: `.venv\Scripts\python -m pytest tests` (headless, no display needed).
+- Run the suite and the linter before opening a PR: `.venv\Scripts\python -m pytest tests` (headless, no display needed) and `.venv\Scripts\python -m ruff check .`.
 - Keep it **portable** — nothing machine-specific. Paths are derived, not hardcoded; if you touch a script, make sure it still works from a fresh clone at any location.
-- The `SHORTCUTS` table in [pcc/ui/shortcuts.py](pcc/ui/shortcuts.py) is the single source of truth for keybindings — update it (and the Keys table above) together.
-- New colour schemes are three hex codes in [pcc/ui/schemes.py](pcc/ui/schemes.py); the suite checks WCAG contrast, so run it.
+- The `SHORTCUTS` table in [pcc/ui/shortcuts.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ui/shortcuts.py) is the single source of truth for keybindings — update it (and the Keys table above) together.
+- New colour schemes are three hex codes in [pcc/ui/schemes.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/ui/schemes.py); the suite checks WCAG contrast, so run it.
+- **Releasing:** bump `__version__` in [pcc/\_\_init\_\_.py](https://github.com/ami-a/prompt-command-center/blob/main/pcc/__init__.py), then publish a GitHub release tagged `v<version>`. The release workflow checks that the tag matches, builds, and uploads to PyPI via Trusted Publishing.
 
 ## Known limitations
 
@@ -488,7 +514,7 @@ Issues and pull requests are welcome.
 ## License
 
 PCC is free software, licensed under the **GNU General Public License v3.0 (or later)**.
-See [LICENSE](LICENSE) for the full text. You may use, study, share, and modify it;
+See [LICENSE](https://github.com/ami-a/prompt-command-center/blob/main/LICENSE) for the full text. You may use, study, share, and modify it;
 derivative works must remain under the GPL.
 
 <br>

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from pcc import lint, store
 from pcc.journal import UndoJournal
 from pcc.model import Library, Tab, Template

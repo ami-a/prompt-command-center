@@ -4,34 +4,84 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref to save minutes.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  FORCE_COLOR: "1"
+
 jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - run: python -m pip install "ruff>=0.6"
+      - run: ruff check --output-format=github .
+
+  # PCC is Windows-only by design (Win32 foreground handling, SendInput, the COM
+  # spell-checker, pywin32), so every test leg runs on Windows. A Linux or macOS
+  # leg would only prove that code nobody can run there imports.
   test:
     name: pytest (Python ${{ matrix.python-version }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
-
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install -e ".[test]"
+      # Headless: tests/conftest.py sets QT_QPA_PLATFORM=offscreen at import time.
+      - run: python -m pytest
 
-      - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements.txt
+  # Installs the oldest release allowed by every floor in pyproject.toml, on the
+  # oldest supported Python, so a floor that is too low fails here rather than on
+  # a user's machine.
+  test-lowest:
+    name: pytest (lowest dependency versions)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.11"
+          activate-environment: true
+      - run: uv pip install --resolution lowest-direct -e ".[test]"
+      - run: uv pip list
+      - run: python -m pytest
 
-      # The suite runs fully headless: tests/conftest.py sets QT_QPA_PLATFORM=
-      # offscreen at import time, so no display server is needed on the runner.
-      - name: Run tests
-        run: python -m pytest tests -q
+  build:
+    name: build + twine check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - run: python -m pip install "build>=1.2" "twine>=6.1"
+      - run: python -m build
+      # --strict fails on warnings too, which is what catches a README that
+      # renders broken on PyPI.
+      - run: twine check --strict dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error

@@ -8,8 +8,6 @@ selection capture, all headlessly.
 
 from __future__ import annotations
 
-import pytest
-
 from pcc import winapi
 from pcc.model import Template, extract_caret, parse_slots
 

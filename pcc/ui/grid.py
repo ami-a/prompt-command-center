@@ -86,7 +86,7 @@ class TileGrid(QScrollArea):
         entries: list[tuple[Tab, Template]],
         show_tab_hints: bool = False,
         keep_id: str | None = None,
-        marked_ids: "set[str] | None" = None,
+        marked_ids: set[str] | None = None,
     ) -> None:
         """Show ``entries``, optionally preserving the selection by template id."""
         self._entries = entries
@@ -111,7 +111,7 @@ class TileGrid(QScrollArea):
         self._index = 0 if not entries else min(new_index, len(entries) - 1)
         self._refresh_selection()
 
-    def apply_marks(self, marked_ids: "set[str]") -> None:
+    def apply_marks(self, marked_ids: set[str]) -> None:
         """Update the marked ring on visible tiles without a full repopulate."""
         for index, (_tab, template) in enumerate(self._entries):
             self._pool[index].set_marked(template.id in marked_ids)

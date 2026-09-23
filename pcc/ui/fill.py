@@ -344,9 +344,9 @@ class FillPanel(QWidget):
         self,
         template: Template,
         resolve=None,
-        context_items: "list[ContextItem] | None" = None,
+        context_items: list[ContextItem] | None = None,
         prefill: str | None = None,
-        recall: "dict[str, str | None] | None" = None,
+        recall: dict[str, str | None] | None = None,
     ) -> None:
         """Show ``template``.
 
@@ -394,7 +394,7 @@ class FillPanel(QWidget):
         self._apply_prefill(prefill)
         self._update_preview()
 
-    def _show_context(self, items: "list[ContextItem]") -> None:
+    def _show_context(self, items: list[ContextItem]) -> None:
         if not items:
             self.context.setVisible(False)
             self.context.clear()

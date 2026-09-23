@@ -1,29 +1,74 @@
+[build-system]
+# >=77 for PEP 639 (`license` as an SPDX string plus `license-files`).
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "pcc"
-version = "1.0.0"
+name = "prompt-command-center"
+dynamic = ["version"]
 description = "Prompt Command Center — a keyboard-first prompt template palette for Windows"
 readme = "README.md"
 requires-python = ">=3.11"
+# SPDX expression (PEP 639). Do not add a `License ::` classifier alongside it:
+# setuptools rejects the combination outright.
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
+authors = [{ name = "Amitai Assayag", email = "amitai@assayag.ai" }]
 keywords = ["prompt", "palette", "launcher", "templates", "windows", "autohotkey", "productivity", "qt", "pyside6"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Win32 (MS Windows)",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Utilities",
     "Topic :: Text Editors :: Text Processing",
 ]
+# Floors are the oldest releases the suite passes against, checked by the
+# `lowest-direct` job in .github/workflows/ci.yml -- not whatever was current.
+# PySide6-Essentials, not PySide6: the full package pulls PySide6-Addons
+# (~169 MB of WebEngine, 3D, Charts, Multimedia) that this app never imports.
+dependencies = [
+    "PySide6-Essentials>=6.5",
+    "pywin32>=306; sys_platform == 'win32'",
+    "rapidfuzz>=3.0",
+    "watchdog>=2.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+lint = ["ruff>=0.6"]
+build = ["build>=1.2", "twine>=6.1"]
+dev = ["prompt-command-center[test,lint,build]"]
+
+[project.gui-scripts]
+# gui-scripts: the launcher is built without a console window on Windows.
+pcc = "pcc.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/<OWNER>/pcc"
-Repository = "https://github.com/<OWNER>/pcc"
-Issues = "https://github.com/<OWNER>/pcc/issues"
+Homepage = "https://github.com/ami-a/prompt-command-center"
+Repository = "https://github.com/ami-a/prompt-command-center"
+Issues = "https://github.com/ami-a/prompt-command-center/issues"
+Changelog = "https://github.com/ami-a/prompt-command-center/releases"
+
+[tool.setuptools]
+# Listed explicitly: flat-layout auto-discovery trips over spike/, scripts/ and
+# tests/ sitting beside the package. `packages` does not recurse, so every
+# subpackage is named.
+packages = ["pcc", "pcc.ui"]
+
+[tool.setuptools.package-data]
+"pcc.ui" = ["theme.qss"]
+
+[tool.setuptools.dynamic]
+# A plain string literal in pcc/__init__.py, so setuptools reads it from the
+# AST without importing the package (which would need PySide6 at build time).
+version = { attr = "pcc.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -34,3 +79,11 @@ markers = [
 # QT_QPA_PLATFORM=offscreen is set in tests/conftest.py at import time, which
 # needs no plugin and applies however pytest is invoked. Qt widget tests
 # therefore run on a locked or headless machine.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["spike"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

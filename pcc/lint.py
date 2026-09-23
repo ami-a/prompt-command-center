@@ -12,11 +12,10 @@ The UI just renders them.
 
 from __future__ import annotations
 
-import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
-from .model import INCLUDE_PREFIX, PLACEHOLDER_RE, Library, Template
+from .model import INCLUDE_PREFIX, PLACEHOLDER_RE, Library
 
 #: Ordering/severity: lower sorts first in the health view.
 SEVERITY = {"broken-include": 0, "empty": 1, "duplicate-title": 2, "untitled": 3, "unused": 4}
@@ -45,7 +44,7 @@ def _include_refs(body: str) -> list[str]:
     return refs
 
 
-def lint(library: Library, frecency: "Callable[[str], float] | None" = None) -> list[Finding]:
+def lint(library: Library, frecency: Callable[[str], float] | None = None) -> list[Finding]:
     """Return health findings, most severe first.
 
     ``frecency`` (from :class:`pcc.usage.UsageStore`) enables the "never used"

@@ -6,13 +6,9 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
-
-#: Set PCC_TIMING=1 to print show latency to stderr. Off by default so the hot
-#: path stays free of even a perf_counter call.
-TIMING = bool(os.environ.get("PCC_TIMING"))
 
 from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
@@ -35,8 +31,8 @@ from .. import compose, context, lint, placement, spell, store, winapi
 from ..context import is_magic
 from ..journal import UndoJournal
 from ..model import Library, Tab, Template, expand_includes, extract_caret, new_id, render
-from ..usage import UsageStore
 from ..search import search as run_search
+from ..usage import UsageStore
 from . import spellcheck
 from .editor import EditorPanel
 from .fill import PREFILL_SLOTS, FillPanel
@@ -46,6 +42,10 @@ from .settings_panel import SettingsPanel
 from .shortcuts import ShortcutsPage
 from .tabstrip import TabStrip
 from .theme import build_stylesheet
+
+#: Set PCC_TIMING=1 to print show latency to stderr. Off by default so the hot
+#: path stays free of even a perf_counter call.
+TIMING = bool(os.environ.get("PCC_TIMING"))
 
 PAGE_GRID, PAGE_FILL, PAGE_EDITOR, PAGE_SETTINGS, PAGE_SHORTCUTS = 0, 1, 2, 3, 4
 
@@ -84,7 +84,7 @@ class PaletteWindow(QWidget):
     SHADOW_MARGIN = 30
 
     def __init__(
-        self, library: Library, settings: dict, usage: "UsageStore | None" = None
+        self, library: Library, settings: dict, usage: UsageStore | None = None
     ) -> None:
         super().__init__(
             None,
@@ -662,7 +662,7 @@ class PaletteWindow(QWidget):
             self._sel_cache = None
         return self._sel_cache
 
-    def _resolver_for(self, template: Template) -> "tuple[object, list, str | None]":
+    def _resolver_for(self, template: Template) -> tuple[object, list, str | None]:
         """Build the magic-slot resolver, CONTEXT items and prefill for ``template``.
 
         The clipboard is read at most once, and only when a magic slot or a
@@ -701,7 +701,7 @@ class PaletteWindow(QWidget):
         self.usage.record_use(template.id, self._current_app())
         self._usage_timer.start(5000)
 
-    def _make_lookup(self) -> "Callable[[str], str | None]":
+    def _make_lookup(self) -> Callable[[str], str | None]:
         """Resolve a ``{{>ref}}`` include to another template's body, by id or title."""
         def lookup(ref: str) -> str | None:
             key = ref.strip().lower()

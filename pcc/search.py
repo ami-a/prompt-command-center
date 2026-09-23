@@ -8,8 +8,8 @@ strongest first, and only falls back to rapidfuzz for typo tolerance.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from rapidfuzz import fuzz
 
@@ -95,7 +95,7 @@ def search(
     query: str,
     tabs: list[Tab],
     limit: int = 60,
-    bonus: "Callable[[str], float] | None" = None,
+    bonus: Callable[[str], float] | None = None,
 ) -> list[Hit]:
     """Rank every template in every tab against ``query``.
 
@@ -110,7 +110,7 @@ def search(
 
     hits: list[tuple[float, int, Hit]] = []
     for order, (tab, template) in enumerate(
-        (tab, template) for tab in tabs for template in tab.templates
+        (t, tpl) for t in tabs for tpl in t.templates
     ):
         base = score_template(query, template, tab)
         if base < MIN_SCORE:

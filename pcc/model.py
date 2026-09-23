@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Callable, Iterator
 
 # {{ name | tail }} -- name may not contain '|' or '}'; the tail may not contain
 # '}'. Both sides are whitespace-trimmed. A missing '|' yields None for the
@@ -145,8 +145,8 @@ def readable(body: str) -> str:
 def _expand_include(
     name: str,
     values: dict[str, str],
-    resolve: "Callable[[str], str | None] | None",
-    lookup: "Callable[[str], str | None] | None",
+    resolve: Callable[[str], str | None] | None,
+    lookup: Callable[[str], str | None] | None,
     seen: tuple[str, ...],
 ) -> str:
     """Resolve a ``{{>ref}}`` include, or a visible marker if it can't be.
@@ -170,7 +170,7 @@ def _expand_include(
 
 def expand_includes(
     body: str,
-    lookup: "Callable[[str], str | None] | None",
+    lookup: Callable[[str], str | None] | None,
     _seen: tuple[str, ...] = (),
 ) -> str:
     """Inline ``{{>ref}}`` includes, leaving every other placeholder untouched.
@@ -203,8 +203,8 @@ def expand_includes(
 def render(
     body: str,
     values: dict[str, str] | None = None,
-    resolve: "Callable[[str], str | None] | None" = None,
-    lookup: "Callable[[str], str | None] | None" = None,
+    resolve: Callable[[str], str | None] | None = None,
+    lookup: Callable[[str], str | None] | None = None,
     _seen: tuple[str, ...] = (),
 ) -> str:
     """Substitute ``values`` into ``body``.
@@ -300,7 +300,7 @@ class Template:
         return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Template":
+    def from_dict(cls, data: dict) -> Template:
         return cls(
             id=str(data.get("id") or new_id("p")),
             title=str(data.get("title", "")).strip()[:MAX_TITLE_LEN] or "Untitled",
@@ -323,7 +323,7 @@ class Tab:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Tab":
+    def from_dict(cls, data: dict) -> Tab:
         return cls(
             id=str(data.get("id") or new_id("t")),
             name=str(data.get("name", "")).strip() or "Untitled",
@@ -358,7 +358,7 @@ class Library:
         return {"version": self.version, "tabs": [t.to_dict() for t in self.tabs]}
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Library":
+    def from_dict(cls, data: dict) -> Library:
         return cls(
             version=int(data.get("version", 1)),
             tabs=[Tab.from_dict(t) for t in data.get("tabs", [])],

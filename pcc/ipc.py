@@ -14,8 +14,8 @@ Two details matter and are easy to get wrong:
 from __future__ import annotations
 
 import ctypes
+from collections.abc import Callable
 from ctypes import wintypes
-from typing import Callable
 
 from PySide6.QtCore import QAbstractNativeEventFilter, Qt
 from PySide6.QtWidgets import QWidget

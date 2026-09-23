@@ -14,3 +14,8 @@ spike/received.txt
 spike/result.txt
 spike/verify.err
 spike/*.txt
+
+# Packaging output.
+dist/
+build/
+*.egg-info/

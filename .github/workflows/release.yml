@@ -1,0 +1,59 @@
+name: Release
+
+# Publishing a GitHub release (tag vX.Y.Z) builds the sdist and wheel and uploads
+# them to PyPI through Trusted Publishing: PyPI trusts this workflow's OIDC token,
+# so no API token is stored anywhere.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      # Fail before building if the tag and pcc.__version__ disagree; otherwise
+      # a release tagged v1.2.0 could quietly upload 1.1.0 (or be rejected by
+      # PyPI as a duplicate).
+      - name: Check tag matches pcc.__version__
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(sed -nE 's/^__version__ = "([^"]+)"$/\1/p' pcc/__init__.py)
+          echo "tag=$TAG version=$version"
+          [ "${TAG#v}" = "$version" ] || { echo "::error::Tag $TAG does not match pcc.__version__ $version"; exit 1; }
+
+      - run: python -m pip install "build>=1.2" "twine>=6.1"
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Must match the environment named in the PyPI trusted publisher. Adding a
+    # required reviewer to it on GitHub makes every upload wait for approval.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/prompt-command-center/
+    permissions:
+      id-token: write  # OIDC token for Trusted Publishing; nothing else is granted
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
